@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Release Schedule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F6F7F9;--panel:#FFFFFF;--ink:#181B22;--muted:#646C7C;--faint:#9AA2B1;
+    --line:#E7E9EF;--line-soft:#F0F1F5;
+    --accent:#5B47E0;--accent-soft:#ECE9FC;--accent-ink:#4232B8;
+    --warn:#B8791A;--warn-soft:#FBF1DD;--warn-line:#F0DEBB;
+    --radius:14px;--shadow:0 1px 2px rgba(24,27,34,.04),0 8px 24px rgba(24,27,34,.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;}
+  .stamp{font-family:"Space Mono",ui-monospace,monospace;}
+
+  .app{height:100vh;display:grid;grid-template-columns:minmax(300px,1fr) 2fr;gap:18px;padding:18px;}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{display:grid;grid-template-rows:1fr 1fr;gap:18px;min-height:0;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+  .panel-head{padding:16px 20px 12px;border-bottom:1px solid var(--line-soft);display:flex;justify-content:space-between;align-items:flex-end;gap:10px;}
+  .eyebrow{display:flex;align-items:center;gap:8px;font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .eyebrow .dot{width:8px;height:8px;border-radius:50%;}
+  .dot.confirmed{background:var(--accent);}
+  .dot.tentative{background:var(--warn);}
+  .panel-head h2{margin:6px 0 0;font-family:"Space Grotesk",sans-serif;font-size:17px;font-weight:600;letter-spacing:-.01em;}
+  .panel-head .count{color:var(--faint);font-weight:500;}
+  .panel-body{overflow-y:auto;padding:6px 10px 12px;}
+
+  .row{display:grid;grid-template-columns:64px 1fr;gap:14px;padding:12px 10px;border-radius:10px;align-items:start;}
+  .row + .row{border-top:1px solid var(--line-soft);}
+  .row:hover{background:#FAFAFE;}
+  .row .date{font-family:"Space Mono",monospace;color:var(--accent-ink);font-size:13px;font-weight:700;line-height:1.25;}
+  .row .date small{display:block;color:var(--faint);font-weight:400;font-size:11px;}
+  .title-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;}
+  .title{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;letter-spacing:-.005em;}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+  .chip{font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;background:var(--line-soft);color:#4B5364;white-space:nowrap;}
+
+  .tcard{padding:13px 12px;border-radius:10px;}
+  .tcard + .tcard{border-top:1px solid var(--line-soft);}
+  .ttop{display:flex;justify-content:space-between;gap:10px;align-items:baseline;}
+  .ttop .right{display:flex;align-items:center;gap:6px;flex:none;}
+  .when{font-family:"Space Mono",monospace;font-size:11px;font-weight:700;color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn-line);padding:2px 7px;border-radius:999px;white-space:nowrap;}
+  .note{color:var(--muted);font-size:12.5px;margin-top:6px;}
+
+  .del{border:none;background:transparent;color:var(--faint);font-size:16px;line-height:1;cursor:pointer;padding:1px 5px;border-radius:6px;flex:none;}
+  .del:hover{color:#D33;background:#FBECEC;}
+
+  /* ---------- Calendar ---------- */
+  .calendar{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0;padding:20px 22px 22px;}
+  .cal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
+  .cal-title h1{margin:0;font-family:"Space Grotesk",sans-serif;font-size:24px;font-weight:700;letter-spacing:-.02em;}
+  .cal-title .month{font-family:"Space Mono",monospace;color:var(--muted);font-size:12px;letter-spacing:.06em;margin-top:3px;}
+  .cal-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px;}
+  .toolbar{display:flex;gap:8px;}
+  .nav{display:flex;align-items:center;gap:8px;}
+
+  .btn{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:12.5px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 13px;border-radius:10px;cursor:pointer;transition:background .12s,border-color .12s;}
+  .btn:hover{background:#FAFAFE;border-color:#D8DBE4;}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn.primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);}
+  .nav button.icon{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:16px;cursor:pointer;display:grid;place-items:center;transition:background .12s,border-color .12s,opacity .12s;}
+  .nav button.icon:hover:not(:disabled){background:#FAFAFE;border-color:#D8DBE4;}
+  .nav button.icon:disabled{opacity:.3;cursor:default;}
+  .nav .now{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:pointer;}
+  .nav .now:hover{background:#FAFAFE;border-color:#D8DBE4;}
+
+  .weekdays{display:grid;grid-template-columns:repeat(7,1fr);font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;border-bottom:1px solid var(--line-soft);padding-bottom:8px;margin-bottom:6px;}
+  .weekdays span{text-align:right;padding-right:6px;}
+  .grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:6px;}
+  .cell{border:1px solid var(--line-soft);border-radius:10px;padding:7px 8px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#fff;}
+  .cell.empty{background:transparent;border-color:transparent;}
+  .cell .num{font-family:"Space Mono",monospace;font-size:12px;color:var(--faint);text-align:right;}
+  .cell.has .num{color:var(--ink);font-weight:700;}
+  .cell.has{border-color:var(--accent-soft);background:linear-gradient(180deg,#FBFAFF,#fff);}
+  .events{margin-top:auto;display:flex;flex-direction:column;gap:4px;}
+  .event{background:var(--accent-soft);border-left:3px solid var(--accent);color:var(--accent-ink);border-radius:6px;padding:5px 7px;font-size:11.5px;font-weight:600;font-family:"Space Grotesk",sans-serif;line-height:1.2;}
+  .event .ev-plat{display:block;font-family:"Inter",sans-serif;font-weight:450;font-size:10px;color:var(--muted);margin-top:2px;}
+
+  .legend{display:flex;gap:16px;margin-top:14px;font-family:"Space Mono",monospace;font-size:11px;color:var(--muted);letter-spacing:.04em;flex-wrap:wrap;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+
+  .panel-body::-webkit-scrollbar{width:9px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#E2E4EC;border-radius:9px;border:3px solid #fff;}
+
+  /* ---------- Modal ---------- */
+  .backdrop{position:fixed;inset:0;background:rgba(24,27,34,.42);display:none;align-items:center;justify-content:center;padding:20px;z-index:60;}
+  .backdrop.open{display:flex;}
+  .modal{background:#fff;border-radius:16px;width:min(440px,100%);box-shadow:0 24px 64px rgba(0,0,0,.28);padding:22px;max-height:92vh;overflow:auto;}
+  .modal h3{margin:0 0 4px;font-family:"Space Grotesk",sans-serif;font-size:19px;font-weight:700;letter-spacing:-.01em;}
+  .modal .lead{color:var(--muted);font-size:12.5px;margin:0 0 4px;}
+  .field{margin-top:14px;}
+  .field > span{display:block;font-size:12px;color:var(--muted);font-weight:500;margin-bottom:5px;}
+  .modal input,.modal textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-family:inherit;font-size:13.5px;color:var(--ink);background:#fff;}
+  .modal textarea{resize:vertical;min-height:60px;}
+  .modal input:focus,.modal textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .seg{display:flex;gap:6px;}
+  .seg-btn{flex:1;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:12.5px;padding:9px;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:9px;cursor:pointer;}
+  .seg-btn.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+  .err{color:#C23;font-size:12px;margin-top:10px;min-height:14px;}
+
+  @media (max-width:880px){
+    body{height:auto;}
+    .app{height:auto;grid-template-columns:1fr;}
+    .sidebar{grid-template-rows:none;}
+    .panel-body{max-height:340px;}
+    .grid{grid-auto-rows:64px;}
+    .cal-actions{align-items:stretch;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow"><span class="dot confirmed"></span>Confirmed dates</div>
+          <h2>Locked in <span class="count" id="firmCount"></span></h2>
+        </div>
+        <button class="btn" id="addBtn">+ Add game</button>
+      </div>
+      <div class="panel-body" id="firmList"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow"><span class="dot tentative"></span>Window or unconfirmed</div>
+          <h2>Watching <span class="count" id="tentCount"></span></h2>
+        </div>
+      </div>
+      <div class="panel-body" id="tentList"></div>
+    </section>
+  </aside>
+
+  <!-- ============ CALENDAR ============ -->
+  <main class="calendar">
+    <div class="cal-head">
+      <div class="cal-title">
+        <h1 id="monthLabel">July 2026</h1>
+        <div class="month" id="rangeLabel"></div>
+      </div>
+      <div class="cal-actions">
+        <div class="toolbar">
+          <button class="btn" id="exportBtn">Export .ics</button>
+        </div>
+        <div class="nav">
+          <button class="icon" id="prev" aria-label="Previous month">&#8249;</button>
+          <button class="now" id="jump">Earliest</button>
+          <button class="icon" id="next" aria-label="Next month">&#8250;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="weekdays">
+      <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <div class="legend">
+      <span><span class="dot confirmed" style="width:9px;height:9px;border-radius:2px;display:inline-block"></span> Confirmed release day</span>
+      <span>Tentative titles are listed in the sidebar, not plotted.</span>
+    </div>
+  </main>
+</div>
+
+<!-- ============ ADD-GAME MODAL ============ -->
+<div class="backdrop" id="backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Add a game</h3>
+    <p class="lead">Saved in this browser. Use a confirmed date to plot it on the calendar, or an estimate to file it under Watching.</p>
+
+    <div class="field">
+      <span>Title</span>
+      <input id="f-name" placeholder="e.g. Hollow Knight: Silksong">
+    </div>
+
+    <div class="field">
+      <span>Date</span>
+      <div class="seg">
+        <button type="button" class="seg-btn active" id="seg-firm">Confirmed date</button>
+        <button type="button" class="seg-btn" id="seg-tent">Estimate / window</button>
+      </div>
+    </div>
+
+    <div class="field" id="field-date">
+      <span>Release date</span>
+      <input type="date" id="f-date">
+    </div>
+    <div class="field" id="field-when" hidden>
+      <span>When (free text)</span>
+      <input id="f-when" placeholder="e.g. Spring 2027, Q3 2026, TBD">
+    </div>
+
+    <div class="field">
+      <span>Platforms (comma separated)</span>
+      <input id="f-platforms" placeholder="PS5, PC, Switch 2">
+    </div>
+
+    <div class="field">
+      <span>Notes (optional)</span>
+      <textarea id="f-note" placeholder="Anything worth remembering"></textarea>
+    </div>
+
+    <div class="err" id="formErr"></div>
+
+    <div class="modal-actions">
+      <button class="btn" id="cancelBtn">Cancel</button>
+      <button class="btn primary" id="saveBtn">Add game</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const MON3=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const KEY="gameReleases.v1";
+
+  // ---------- Built-in data ----------
+  const defaultFirm=[
+    {name:"Palworld 1.0",            date:"2026-07-10", platforms:["PS5","Xbox","PC"], sub:"Leaves Early Access \u2014 World Tree update"},
+    {name:"Big Walk",                date:"2026-08-04", platforms:["Switch 2","PS5","PC","Mac"], sub:"Co-op walker from the Untitled Goose Game studio"},
+    {name:"Valheim 1.0",             date:"2026-09-09", platforms:["PC","PS5","Xbox","Switch 2","Linux","Mac"], sub:"Deep North \u2014 final biome, leaves Early Access"},
+    {name:"Marvel\u2019s Wolverine", date:"2026-09-15", platforms:["PS5"], sub:"Insomniac Games"},
+    {name:"Rayman Legends Retold",   date:"2026-10-01", platforms:["PS5","Xbox Series","Switch 2","PC"], sub:"3D reimagining of Rayman Legends"},
+    {name:"Switch Sports Resort",    date:"2026-10-22", platforms:["Switch 2"], sub:"12 sports, return to Wuhu Island"},
+    {name:"Fable",                   date:"2027-02-23", platforms:["Xbox Series","PC","PS5"], sub:"Playground Games reboot \u2014 Premium early access Feb 18"},
+  ];
+  const defaultTentative=[
+    {name:"Pok\u00e9mon Pokopia DLC Wave 1: Bubbly Basin", when:"Aug 2026", anchor:"2026-08-26", platforms:["Switch 2"],
+     note:"Part 1 of the Expansion Pass. Nintendo confirmed only \u201cAugust 2026\u201d (no day). Adds an underwater town, new Pok\u00e9mon and Ditto outfits. A free v2.0 Dive update also arrives in August."},
+    {name:"The Legend of Zelda: Ocarina of Time Remake", when:"2026", anchor:"2026-12-01", platforms:["Switch 2"],
+     note:"Revealed at the June 9 Nintendo Direct. Confirmed for 2026 with no specific date; leaks point to a holiday window. No gameplay shown yet."},
+    {name:"Spyro: A Realm Beyond (\u201cSpyro 4\u201d)", when:"Spring 2027", anchor:"2027-04-01", platforms:["PS5","Xbox Series","Switch 2","PC"],
+     note:"Toys for Bob. A new original adventure built around full dragon flight. Only a \u201cSpring 2027\u201d window is confirmed."},
+    {name:"Kingdom Hearts 4", when:"No date", anchor:"2027-07-01", platforms:["Switch 2","+ others"],
+     note:"New trailer at the June 9 Nintendo Direct; confirmed for Switch 2 at launch. Square Enix gave no release window. Rumors point to Q3 2027."},
+  ];
+
+  // ---------- Storage (graceful if blocked) ----------
+  function loadUser(){ try{ return JSON.parse(localStorage.getItem(KEY))||[]; }catch(e){ return []; } }
+  let userGames=loadUser();
+  function persist(){ try{ localStorage.setItem(KEY,JSON.stringify(userGames)); }catch(e){ /* sandboxed: keep in memory for this session */ } }
+
+  // ---------- Helpers ----------
+  function fmtDateParts(iso){const [y,m,d]=iso.split("-").map(Number);return {top:MON3[m-1].toUpperCase()+" "+d, year:y};}
+  function slug(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");}
+  function addDays(iso,n){const d=new Date(iso+"T00:00:00");d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+  function esc(s){return (s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
+  function htmlEsc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+  // ---------- Element refs ----------
+  const firmList=document.getElementById("firmList");
+  const tentList=document.getElementById("tentList");
+  const grid=document.getElementById("grid");
+  const monthLabel=document.getElementById("monthLabel");
+  const rangeLabel=document.getElementById("rangeLabel");
+  const prevBtn=document.getElementById("prev");
+  const nextBtn=document.getElementById("next");
+
+  let START,END,cur,byDate;
+  function idx(o){return o.y*12+o.m;}
+
+  // ---------- Build merged lists ----------
+  function getFirm(){
+    const u=userGames.filter(g=>g.confirmed).map(g=>({name:g.name,date:g.date,platforms:g.platforms,sub:g.note||"",user:true,id:g.id}));
+    return [...defaultFirm,...u].sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  }
+  function getTent(){
+    const u=userGames.filter(g=>!g.confirmed).map(g=>({name:g.name,when:g.when||"TBD",platforms:g.platforms,note:g.note||"",user:true,id:g.id}));
+    return [...defaultTentative,...u];
+  }
+
+  // ---------- Render ----------
+  function refresh(){
+    const firm=getFirm(), tent=getTent();
+
+    // firm list
+    firmList.innerHTML="";
+    firm.forEach(g=>{
+      const f=fmtDateParts(g.date);
+      const row=document.createElement("div");
+      row.className="row";
+      row.innerHTML=`
+        <div class="date stamp">${f.top}<small>${f.year}</small></div>
+        <div>
+          <div class="title-head">
+            <div class="title">${htmlEsc(g.name)}</div>
+            ${g.user?`<button class="del" data-id="${g.id}" title="Remove">\u00d7</button>`:""}
+          </div>
+          ${g.sub?`<div class="sub">${htmlEsc(g.sub)}</div>`:""}
+          <div class="chips">${(g.platforms||[]).map(p=>`<span class="chip">${htmlEsc(p)}</span>`).join("")}</div>
+        </div>`;
+      firmList.appendChild(row);
+    });
+    document.getElementById("firmCount").textContent="\u00b7 "+firm.length;
+
+    // tentative list
+    tentList.innerHTML="";
+    tent.forEach(g=>{
+      const card=document.createElement("div");
+      card.className="tcard";
+      card.innerHTML=`
+        <div class="ttop">
+          <div class="title">${htmlEsc(g.name)}</div>
+          <div class="right">
+            <div class="when stamp">${htmlEsc(g.when)}</div>
+            ${g.user?`<button class="del" data-id="${g.id}" title="Remove">\u00d7</button>`:""}
+          </div>
+        </div>
+        ${g.note?`<div class="note">${htmlEsc(g.note)}</div>`:""}
+        <div class="chips">${(g.platforms||[]).map(p=>`<span class="chip">${htmlEsc(p)}</span>`).join("")}</div>`;
+      tentList.appendChild(card);
+    });
+    document.getElementById("tentCount").textContent="\u00b7 "+tent.length;
+
+    // calendar range + index
+    byDate={};
+    firm.forEach(g=>{(byDate[g.date]=byDate[g.date]||[]).push(g);});
+    const dates=firm.map(g=>g.date).sort();
+    const min=dates[0], max=dates[dates.length-1];
+    START={y:+min.slice(0,4), m:+min.slice(5,7)-1};
+    END={y:+max.slice(0,4), m:+max.slice(5,7)-1};
+    if(!cur) cur={...START};
+    if(idx(cur)<idx(START)) cur={...START};
+    if(idx(cur)>idx(END)) cur={...END};
+
+    rangeLabel.textContent="SCHEDULE \u00b7 "+MON3[START.m].toUpperCase()+" "+START.y+" \u2014 "+MON3[END.m].toUpperCase()+" "+END.y;
+    renderMonth();
+  }
+
+  function renderMonth(){
+    grid.innerHTML="";
+    monthLabel.textContent=MONTHS[cur.m]+" "+cur.y;
+    prevBtn.disabled=idx(cur)<=idx(START);
+    nextBtn.disabled=idx(cur)>=idx(END);
+
+    const firstDow=new Date(cur.y,cur.m,1).getDay();
+    const days=new Date(cur.y,cur.m+1,0).getDate();
+    for(let i=0;i<firstDow;i++){const c=document.createElement("div");c.className="cell empty";grid.appendChild(c);}
+    for(let d=1;d<=days;d++){
+      const iso=`${cur.y}-${String(cur.m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      const list=byDate[iso];
+      const c=document.createElement("div");
+      c.className="cell"+(list?" has":"");
+      let html=`<div class="num stamp">${d}</div>`;
+      if(list){
+        html+=`<div class="events">`+list.map(g=>{
+          const pl=(g.platforms||[]).slice(0,3).join(" \u00b7 ")+((g.platforms||[]).length>3?" \u00b7 +"+(g.platforms.length-3):"");
+          return `<div class="event" title="${htmlEsc(g.name)} \u2014 ${htmlEsc((g.platforms||[]).join(", "))}">${htmlEsc(g.name)}<span class="ev-plat">${htmlEsc(pl)}</span></div>`;
+        }).join("")+`</div>`;
+      }
+      c.innerHTML=html;
+      grid.appendChild(c);
+    }
+  }
+
+  // ---------- Navigation ----------
+  prevBtn.onclick=()=>{if(idx(cur)>idx(START)){cur.m--;if(cur.m<0){cur.m=11;cur.y--;}renderMonth();}};
+  nextBtn.onclick=()=>{if(idx(cur)<idx(END)){cur.m++;if(cur.m>11){cur.m=0;cur.y++;}renderMonth();}};
+  document.getElementById("jump").onclick=()=>{cur={...START};renderMonth();};
+
+  // ---------- Delete user games ----------
+  document.addEventListener("click",e=>{
+    const b=e.target.closest(".del");
+    if(!b) return;
+    userGames=userGames.filter(g=>g.id!==b.dataset.id);
+    persist(); refresh();
+  });
+
+  // ---------- Modal ----------
+  const backdrop=document.getElementById("backdrop");
+  const segFirm=document.getElementById("seg-firm");
+  const segTent=document.getElementById("seg-tent");
+  const fieldDate=document.getElementById("field-date");
+  const fieldWhen=document.getElementById("field-when");
+  const formErr=document.getElementById("formErr");
+  let mode="firm";
+
+  function setMode(m){
+    mode=m;
+    segFirm.classList.toggle("active",m==="firm");
+    segTent.classList.toggle("active",m==="tent");
+    fieldDate.hidden=m!=="firm";
+    fieldWhen.hidden=m!=="tent";
+  }
+  segFirm.onclick=()=>setMode("firm");
+  segTent.onclick=()=>setMode("tent");
+
+  function openModal(){
+    formErr.textContent="";
+    ["f-name","f-date","f-when","f-platforms","f-note"].forEach(id=>document.getElementById(id).value="");
+    setMode("firm");
+    backdrop.classList.add("open");
+    document.getElementById("f-name").focus();
+  }
+  function closeModal(){backdrop.classList.remove("open");}
+  document.getElementById("addBtn").onclick=openModal;
+  document.getElementById("cancelBtn").onclick=closeModal;
+  backdrop.addEventListener("click",e=>{if(e.target===backdrop)closeModal();});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&backdrop.classList.contains("open"))closeModal();});
+
+  document.getElementById("saveBtn").onclick=()=>{
+    const name=document.getElementById("f-name").value.trim();
+    const platforms=document.getElementById("f-platforms").value.split(",").map(s=>s.trim()).filter(Boolean);
+    const note=document.getElementById("f-note").value.trim();
+    if(!name){formErr.textContent="Give the game a title.";return;}
+    const g={id:"u"+Date.now()+Math.random().toString(36).slice(2,6),name,platforms,note,user:true};
+    if(mode==="firm"){
+      const date=document.getElementById("f-date").value;
+      if(!date){formErr.textContent="Pick a release date, or switch to Estimate / window.";return;}
+      g.confirmed=true; g.date=date;
+    }else{
+      const when=document.getElementById("f-when").value.trim();
+      if(!when){formErr.textContent="Add a window (e.g. \u201cSpring 2027\u201d), or switch to Confirmed date.";return;}
+      g.confirmed=false; g.when=when;
+    }
+    userGames.push(g); persist();
+    closeModal();
+    if(g.confirmed) cur=null; // recompute and let range expand; keep current if still valid
+    refresh();
+  };
+
+  // ---------- ICS export ----------
+  function buildICS(){
+    const firm=getFirm(), tent=getTent();
+    const now=new Date().toISOString().replace(/[-:]/g,"").slice(0,15)+"Z";
+    const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Game Releases//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:Game Releases"];
+
+    function ev(start,summary,desc,uid){
+      lines.push("BEGIN:VEVENT");
+      lines.push("UID:"+uid);
+      lines.push("DTSTAMP:"+now);
+      lines.push("DTSTART;VALUE=DATE:"+start.replace(/-/g,""));
+      lines.push("DTEND;VALUE=DATE:"+addDays(start,1).replace(/-/g,""));
+      lines.push("SUMMARY:"+esc(summary));
+      if(desc) lines.push("DESCRIPTION:"+esc(desc));
+      lines.push("END:VEVENT");
+    }
+
+    firm.forEach(g=>{
+      const desc=[g.sub,(g.platforms&&g.platforms.length)?"Platforms: "+g.platforms.join(", "):""].filter(Boolean).join(" \u2014 ");
+      ev(g.date,g.name,desc,slug(g.name)+"-"+g.date+"@game-releases");
+    });
+    tent.forEach(g=>{
+      let anchor=g.anchor;
+      if(!anchor){const m=(g.when||"").match(/\b(20\d{2})\b/);if(m)anchor=m[1]+"-07-01";}
+      if(!anchor) return; // no way to place it on a calendar
+      const desc=["Estimated: "+(g.when||"TBC"),g.note,(g.platforms&&g.platforms.length)?"Platforms: "+g.platforms.join(", "):""].filter(Boolean).join(" \u2014 ");
+      ev(anchor,g.name+" (TBC \u2014 "+(g.when||"date TBC")+")",desc,slug(g.name)+"-"+anchor+"@game-releases");
+    });
+
+    lines.push("END:VCALENDAR");
+    return lines.join("\r\n");
+  }
+
+  document.getElementById("exportBtn").onclick=()=>{
+    const blob=new Blob([buildICS()],{type:"text/calendar;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download="game-releases.ics";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // ---------- Go ----------
+  refresh();
+</script>
+</body>
+</html>
