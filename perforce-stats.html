@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perforce Commit Stats</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#fff;color:#000;
+    font-family:ui-monospace,Consolas,Menlo,monospace;
+    font-size:14px;line-height:1.5;
+    padding:24px 16px 60px;
+  }
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:20px;margin-bottom:4px}
+  header p{margin-bottom:16px}
+  h2{font-size:15px;margin:28px 0 8px;border-bottom:1px solid #000;padding-bottom:4px}
+  .sub{font-size:12px;color:#555;margin-bottom:10px}
+
+  textarea{
+    width:100%;min-height:140px;resize:vertical;
+    border:1px solid #000;padding:8px;
+    font-family:inherit;font-size:12px;line-height:1.5;
+  }
+  .actions{margin:8px 0 4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{
+    background:#fff;color:#000;border:1px solid #000;
+    font-family:inherit;font-size:13px;padding:6px 14px;cursor:pointer;
+  }
+  button:hover{background:#000;color:#fff}
+  button:focus-visible{outline:2px solid #000;outline-offset:2px}
+  label[for=file]{text-decoration:underline;cursor:pointer}
+  #file{display:none}
+  #error,#notice{display:none;margin-top:8px;font-size:13px;padding:6px 8px;border:1px solid #000}
+  #error{font-weight:bold}
+
+  /* stats */
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+  .stat{border:1px solid #000;padding:10px 12px}
+  .stat .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#555}
+  .stat .value{font-size:18px;font-weight:bold;word-break:break-all}
+  .stat .s2{font-size:12px;color:#555}
+
+  /* charts */
+  .chart-scroll{overflow-x:auto;border:1px solid #000;padding:12px 12px 6px}
+  .chart{display:flex;align-items:flex-end;gap:2px;height:180px;width:max-content;min-width:100%}
+  .bar-col{display:flex;flex-direction:column;justify-content:flex-end;height:100%;min-width:12px;flex:1}
+  .bar{background:#000;min-height:2px}
+  .bar-col.weekend .bar{
+    background:repeating-linear-gradient(45deg,#000 0 3px,#fff 3px 6px);
+    border:1px solid #000;border-bottom:none;
+  }
+  .bar-col.empty .bar{background:#ccc;height:2px;border:none}
+  .axis{display:flex;gap:2px;margin-top:4px;font-size:10px;color:#555;width:max-content;min-width:100%}
+  .axis span{min-width:12px;flex:1;text-align:center;white-space:nowrap}
+  .legend{font-size:12px;margin-top:8px}
+  .chip{display:inline-block;width:10px;height:10px;border:1px solid #000;vertical-align:-1px;margin:0 4px 0 12px}
+  .chip.solid{background:#000}
+  .chip.stripe{background:repeating-linear-gradient(45deg,#000 0 3px,#fff 3px 6px)}
+
+  .hour-chart{display:flex;align-items:flex-end;gap:3px;height:100px}
+  .hour-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+  .hour-col .bar{background:#999}
+  .hour-col.work .bar{background:#000}
+  .hour-axis{display:flex;gap:3px;margin-top:4px;font-size:10px;color:#555}
+  .hour-axis span{flex:1;text-align:center}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border:1px solid #000;padding:5px 8px;text-align:left}
+  th{background:#000;color:#fff;font-weight:normal;font-size:12px}
+  th.num,td.num{text-align:right}
+  td.rank{text-align:right;width:32px;color:#555}
+  .ubar-track{background:#fff;border:1px solid #000;height:9px;min-width:100px}
+  .ubar{height:100%;background:#000}
+
+  #results{display:none}
+  @media (max-width:600px){.ubar-track{min-width:50px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Perforce Commit Stats</h1>
+    <p>Generate the log with: <b>p4 changes -t -s submitted -m 10000 //depot/... &gt; changes.txt</b><br>
+    Put changes.txt next to this page to auto-load it, or paste / open the file below. Everything runs locally.</p>
+  </header>
+
+  <textarea id="input" spellcheck="false" placeholder="Paste p4 changes -t output here, e.g.
+
+Change 48213 on 2026/07/02 18:42:11 by jeremy@dcom-ws 'fix spawn kick'
+
+Tagged output (p4 -ztag changes -t) works too."></textarea>
+  <div class="actions">
+    <button onclick="analyze()">Analyze</button>
+    <button onclick="loadDemo()">Demo data</button>
+    <span>or <label for="file">open a .txt file</label><input type="file" id="file" accept=".txt,.log,.out,text/plain"></span>
+  </div>
+  <div id="error"></div>
+  <div id="notice"></div>
+
+  <div id="results">
+
+    <h2>Summary</h2>
+    <div class="stat-grid" id="statGrid"></div>
+
+    <h2>Submits per day</h2>
+    <div class="sub" id="rangeSub"></div>
+    <div class="chart-scroll">
+      <div class="chart" id="dayChart"></div>
+      <div class="axis" id="dayAxis"></div>
+    </div>
+    <div class="legend">Legend:<span class="chip solid"></span>weekday<span class="chip stripe"></span>weekend</div>
+
+    <div id="hourSection">
+      <h2>Submits by hour of day</h2>
+      <div class="sub">Black bars = 8 AM–5 PM. Gray bars = after hours.</div>
+      <div class="chart-scroll">
+        <div class="hour-chart" id="hourChart"></div>
+        <div class="hour-axis" id="hourAxis"></div>
+      </div>
+    </div>
+
+    <h2>Leaderboard</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>#</th><th>User</th><th style="width:32%">Share</th>
+          <th class="num">Total</th><th class="num">Weekend</th><th class="num">After hrs</th>
+        </tr></thead>
+        <tbody id="lbBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const WORK_START = 8;   // 8:00 AM inclusive
+const WORK_END   = 17;  // 17:00+ is after-hours
+const AUTO_FILE  = 'changes.txt';
+
+const $ = id => document.getElementById(id);
+let commits = [];
+let displayName = new Map();  // lowercase user -> first-seen casing
+const dispUser = u => displayName.get(u) || u;
+
+/* ---------- parsing ---------- */
+
+const RE_CLASSIC = /^Change\s+(\d+)\s+on\s+(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}):(\d{2}))?\s+by\s+([^@\s]+)@(\S+)/;
+
+function parseLog(text){
+  const out = [];
+  const lines = text.split(/\r?\n/);
+
+  for(const line of lines){
+    const m = RE_CLASSIC.exec(line.trim());
+    if(!m) continue;
+    const [,cl,y,mo,d,h,mi,s] = m;
+    const hasTime = h !== undefined;
+    const date = new Date(+y, +mo-1, +d, hasTime? +h:12, hasTime? +mi:0, hasTime? +s:0);
+    if(isNaN(date)) continue;
+    out.push({ change:+cl, user:m[8], date, hasTime });
+  }
+  if(out.length) return out;
+
+  // -ztag fallback
+  let rec = null;
+  const flush = () => {
+    if(rec && rec.change && rec.user && rec.time)
+      out.push({ change:rec.change, user:rec.user, date:new Date(rec.time*1000), hasTime:true });
+    rec = null;
+  };
+  for(const raw of lines){
+    const line = raw.trim();
+    let m;
+    if((m = /^\.\.\.\s+change\s+(\d+)/.exec(line)))           { flush(); rec = {change:+m[1]}; }
+    else if(rec && (m = /^\.\.\.\s+time\s+(\d+)/.exec(line))) rec.time = +m[1];
+    else if(rec && (m = /^\.\.\.\s+user\s+(\S+)/.exec(line))) rec.user = m[1];
+  }
+  flush();
+  return out;
+}
+
+/* ---------- helpers ---------- */
+
+const dayKey = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const isWeekend = d => d.getDay()===0 || d.getDay()===6;
+const isAfterHours = d => d.getHours() < WORK_START || d.getHours() >= WORK_END;
+const fmtDay = k => {
+  const [y,m,d] = k.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+};
+const plural = (n,w) => n+' '+w+(n===1?'':'s');
+const esc = s => s.replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+function topEntry(map){
+  let best = null;
+  for(const [k,v] of map) if(v>0 && (!best || v>best[1])) best = [k,v];
+  return best;
+}
+
+/* ---------- analysis ---------- */
+
+function analyze(){
+  const err = $('error'), notice = $('notice');
+  err.style.display = notice.style.display = 'none';
+
+  commits = parseLog($('input').value);
+  if(!commits.length){
+    err.textContent = "No changelists found. Expected lines like: Change 123 on 2026/07/02 14:03:11 by user@client '...'";
+    err.style.display = 'block';
+    $('results').style.display = 'none';
+    return;
+  }
+
+  const timed = commits.filter(c => c.hasTime).length;
+  if(timed === 0){
+    notice.textContent = 'No timestamps (run p4 changes with -t). Hour-of-day and after-hours stats skipped.';
+    notice.style.display = 'block';
+  }
+
+  commits.sort((a,b) => a.date - b.date);
+
+  const perDay = new Map(), perUser = new Map(), wkUser = new Map(), ahUser = new Map();
+  const perHour = new Array(24).fill(0);
+  displayName = new Map();  // lowercase key -> first-seen casing
+  for(const c of commits){
+    const k = dayKey(c.date);
+    const u = c.user.toLowerCase();   // usernames are case-insensitive
+    if(!displayName.has(u)) displayName.set(u, c.user);
+    perDay.set(k,(perDay.get(k)||0)+1);
+    perUser.set(u,(perUser.get(u)||0)+1);
+    if(isWeekend(c.date)) wkUser.set(u,(wkUser.get(u)||0)+1);
+    if(c.hasTime){
+      perHour[c.date.getHours()]++;
+      if(isAfterHours(c.date)) ahUser.set(u,(ahUser.get(u)||0)+1);
+    }
+  }
+
+  const first = new Date(commits[0].date); first.setHours(0,0,0,0);
+  const last  = new Date(commits[commits.length-1].date); last.setHours(0,0,0,0);
+  const days = [];
+  for(let d = new Date(first); d <= last; d.setDate(d.getDate()+1)){
+    const k = dayKey(d);
+    days.push({key:k, count:perDay.get(k)||0, weekend:isWeekend(d)});
+  }
+
+  renderStats(perUser, wkUser, ahUser, perDay, timed);
+  renderDayChart(days);
+  renderHourChart(perHour, timed);
+  renderLeaderboard(perUser, wkUser, ahUser, timed);
+
+  $('rangeSub').textContent = fmtDay(days[0].key)+' to '+fmtDay(days[days.length-1].key)+
+    ' | '+plural(days.length,'day')+' | '+plural(commits.length,'changelist');
+  $('results').style.display = 'block';
+}
+
+function renderStats(perUser, wkUser, ahUser, perDay, timed){
+  const grid = $('statGrid');
+  grid.innerHTML = '';
+  const card = (label,value,sub) => {
+    const el = document.createElement('div');
+    el.className = 'stat';
+    el.innerHTML = '<div class="label">'+label+'</div><div class="value">'+value+'</div>'+(sub?'<div class="s2">'+sub+'</div>':'');
+    grid.appendChild(el);
+  };
+
+  card('Total submits', commits.length.toLocaleString(), plural(perUser.size,'submitter'));
+
+  const busiest = topEntry(perDay);
+  card('Busiest day', busiest[1]+' submits', fmtDay(busiest[0]));
+
+  const wk = topEntry(wkUser);
+  card('Most weekend commits', wk ? esc(dispUser(wk[0])) : 'n/a', wk ? plural(wk[1],'weekend submit') : 'no weekend submits');
+
+  const ah = topEntry(ahUser);
+  card('Most after-hours commits', timed && ah ? esc(dispUser(ah[0])) : 'n/a',
+       timed && ah ? plural(ah[1],'submit')+' outside 8 AM-5 PM' : (timed ? 'all in work hours' : 'needs -t timestamps'));
+}
+
+function renderDayChart(days){
+  const chart = $('dayChart'), axis = $('dayAxis');
+  chart.innerHTML = axis.innerHTML = '';
+  const max = Math.max(1, ...days.map(d => d.count));
+  const labelEvery = Math.max(1, Math.ceil(days.length/24));
+
+  days.forEach((d,i) => {
+    const col = document.createElement('div');
+    col.className = 'bar-col'+(d.weekend?' weekend':'')+(d.count===0?' empty':'');
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = d.count===0 ? '2px' : Math.max(3,(d.count/max)*100)+'%';
+    col.title = fmtDay(d.key)+': '+plural(d.count,'submit')+(d.weekend?' (weekend)':'');
+    col.appendChild(bar);
+    chart.appendChild(col);
+
+    const lab = document.createElement('span');
+    if(i % labelEvery === 0){
+      const [,m,dd] = d.key.split('-');
+      lab.textContent = +m+'/'+ +dd;
+    }
+    axis.appendChild(lab);
+  });
+}
+
+function renderHourChart(perHour, timed){
+  const sect = $('hourSection');
+  if(!timed){ sect.style.display = 'none'; return; }
+  sect.style.display = '';
+
+  const chart = $('hourChart'), axis = $('hourAxis');
+  chart.innerHTML = axis.innerHTML = '';
+  const max = Math.max(1, ...perHour);
+
+  for(let h = 0; h < 24; h++){
+    const col = document.createElement('div');
+    col.className = 'hour-col'+(h >= WORK_START && h < WORK_END ? ' work' : '');
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = perHour[h]===0 ? '2px' : Math.max(3,(perHour[h]/max)*100)+'%';
+    const hh = ((h%12)||12)+(h<12?'am':'pm');
+    col.title = hh+': '+plural(perHour[h],'submit');
+    col.appendChild(bar);
+    chart.appendChild(col);
+
+    const lab = document.createElement('span');
+    lab.textContent = h%3===0 ? hh : '';
+    axis.appendChild(lab);
+  }
+}
+
+function renderLeaderboard(perUser, wkUser, ahUser, timed){
+  const body = $('lbBody');
+  body.innerHTML = '';
+  const rows = [...perUser.entries()].sort((a,b) => b[1]-a[1]);
+  const max = rows.length ? rows[0][1] : 1;
+
+  rows.forEach(([user,count],i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="rank">'+(i+1)+'</td>'+
+      '<td>'+esc(dispUser(user))+'</td>'+
+      '<td><div class="ubar-track"><div class="ubar" style="width:'+Math.max(2,(count/max)*100)+'%"></div></div></td>'+
+      '<td class="num">'+count+'</td>'+
+      '<td class="num">'+(wkUser.get(user)||0)+'</td>'+
+      '<td class="num">'+(timed ? (ahUser.get(user)||0) : '-')+'</td>';
+    body.appendChild(tr);
+  });
+}
+
+/* ---------- input plumbing ---------- */
+
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => { $('input').value = r.result; analyze(); };
+  r.readAsText(f);
+});
+
+/* ---------- auto-load changes.txt ---------- */
+
+window.addEventListener('DOMContentLoaded', async () => {
+  try{
+    const r = await fetch(AUTO_FILE, {cache:'no-store'});
+    if(!r.ok) return;
+    const text = await r.text();
+    if(!text.trim()) return;
+    $('input').value = text;
+    analyze();
+    if(commits.length){
+      const n = $('notice');
+      n.textContent = 'Auto-loaded '+AUTO_FILE+' ('+plural(commits.length,'changelist')+').';
+      n.style.display = 'block';
+    }
+  }catch(e){
+    // file:// blocks fetch, or no changes.txt present — fall back to manual input
+  }
+});
+
+/* ---------- demo data ---------- */
+
+function loadDemo(){
+  const users = [
+    ['jeremy','dcom-ws',   1.00, .30, .45],
+    ['mchen','build01',    .85, .05, .10],
+    ['skowalski','sk-lap', .70, .15, .60],
+    ['dpatel','dp-main',   .55, .02, .05],
+    ['aruiz','veh-art',    .40, .40, .30],
+    ['buildbot','ci-node', .35, .50, .90],
+  ];
+  const msgs = [
+    'TMeasy: clamp slip near zero speed','Fix spawn kick - init lastLength at first contact',
+    'Allison 4070 shift map: gate downshifts on turbine speed','Suspension: read GetV() on physics thread',
+    'Merge //dev/tires to //main','Nightly content build','LVSR: retune rear damper curve',
+    'Torque converter K-factor curve update','JLTV tester feedback pass 3','CI: fix p4 stream scoping',
+  ];
+  const lines = [];
+  let cl = 48000;
+  const now = new Date(); now.setHours(0,0,0,0);
+  for(let back = 41; back >= 0; back--){
+    const day = new Date(now); day.setDate(day.getDate()-back);
+    const wknd = isWeekend(day);
+    for(const [u,ws,wt,wkp,ahp] of users){
+      let n = Math.random() < wt ? Math.floor(Math.random()*4*wt)+(wknd?0:1) : 0;
+      if(wknd && Math.random() > wkp) n = 0;
+      for(let i=0;i<n;i++){
+        let h;
+        if(Math.random() < ahp) h = Math.random()<.5 ? Math.floor(Math.random()*7) : 17+Math.floor(Math.random()*7);
+        else h = WORK_START+Math.floor(Math.random()*(WORK_END-WORK_START));
+        const mi = String(Math.floor(Math.random()*60)).padStart(2,'0');
+        const s  = String(Math.floor(Math.random()*60)).padStart(2,'0');
+        const y = day.getFullYear(), mo = String(day.getMonth()+1).padStart(2,'0'), dd = String(day.getDate()).padStart(2,'0');
+        lines.push("Change "+(++cl)+" on "+y+"/"+mo+"/"+dd+" "+String(h).padStart(2,'0')+":"+mi+":"+s+" by "+u+"@"+ws+" '"+msgs[Math.floor(Math.random()*msgs.length)]+"'");
+      }
+    }
+  }
+  $('input').value = lines.join('\n');
+  analyze();
+}
+</script>
+</body>
+</html>
