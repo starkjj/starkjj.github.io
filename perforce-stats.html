@@ -44,8 +44,11 @@
 
   /* charts */
   .chart-scroll{overflow-x:auto;border:1px solid #000;padding:12px 12px 6px}
+  .chart-tools{display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:12px;color:#555}
+  .chart-tools button{padding:2px 9px;font-size:12px;line-height:1.4}
+  .chart-tools button.on{background:#000;color:#fff}
   .chart{display:flex;align-items:flex-end;gap:2px;height:180px;width:max-content;min-width:100%}
-  .bar-col{display:flex;flex-direction:column;justify-content:flex-end;height:100%;min-width:12px;flex:1}
+  .bar-col{display:flex;flex-direction:column;justify-content:flex-end;height:100%;flex:1}
   .bar{background:#000;min-height:2px}
   .bar-col.weekend .bar{
     background:repeating-linear-gradient(45deg,#000 0 3px,#fff 3px 6px);
@@ -108,6 +111,13 @@ Tagged output (p4 -ztag changes -t) works too."></textarea>
 
     <h2>Submits per day</h2>
     <div class="sub" id="rangeSub"></div>
+    <div class="chart-tools">
+      <span>Zoom:</span>
+      <button id="zFit" onclick="setDayZoom('fit')">Fit all</button>
+      <button onclick="setDayZoom('out')">&minus;</button>
+      <button onclick="setDayZoom('in')">+</button>
+      <span id="zoomNote"></span>
+    </div>
     <div class="chart-scroll">
       <div class="chart" id="dayChart"></div>
       <div class="axis" id="dayAxis"></div>
@@ -142,12 +152,36 @@ Tagged output (p4 -ztag changes -t) works too."></textarea>
 
 const WORK_START = 8;   // 8:00 AM inclusive
 const WORK_END   = 17;  // 17:00+ is after-hours
-const AUTO_FILE  = 'changes.txt';
 
 const $ = id => document.getElementById(id);
 let commits = [];
 let displayName = new Map();  // lowercase user -> first-seen casing
 const dispUser = u => displayName.get(u) || u;
+let dayData = [];             // cached daily buckets for zoom re-render
+const ZOOM_STEPS = [0, 3, 5, 8, 12, 18, 28, 44];  // px per day; 0 = fit all
+let dayZoomIdx = 0;           // default: fit entire history
+
+/* ---------- encoding-aware decode ---------- */
+// PowerShell's `p4 changes ... > file` writes UTF-16 LE with a BOM.
+// Detect BOM (and null-byte heuristic) and decode accordingly.
+function decodeBytes(buf){
+  const b = new Uint8Array(buf);
+  if(b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return new TextDecoder('utf-16le').decode(b.subarray(2));
+  if(b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return new TextDecoder('utf-16be').decode(b.subarray(2));
+  if(b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return new TextDecoder('utf-8').decode(b.subarray(3));
+  // no BOM: sniff for UTF-16 by counting null bytes in the first chunk
+  let nulls = 0, look = Math.min(b.length, 400);
+  for(let i = 0; i < look; i++) if(b[i] === 0) nulls++;
+  if(nulls > look * 0.2){
+    // odd indices null => LE, even indices null => BE
+    let oddNull = 0;
+    for(let i = 1; i < look; i += 2) if(b[i] === 0) oddNull++;
+    return new TextDecoder(oddNull > nulls/2 ? 'utf-16le' : 'utf-16be').decode(b);
+  }
+  return new TextDecoder('utf-8').decode(b);
+}
+// strip any stray leading BOM char (e.g. pasted content)
+const stripBOM = s => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
 
 /* ---------- parsing ---------- */
 
@@ -155,7 +189,7 @@ const RE_CLASSIC = /^Change\s+(\d+)\s+on\s+(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\
 
 function parseLog(text){
   const out = [];
-  const lines = text.split(/\r?\n/);
+  const lines = stripBOM(text).split(/\r?\n/);
 
   for(const line of lines){
     const m = RE_CLASSIC.exec(line.trim());
@@ -250,7 +284,8 @@ function analyze(){
   }
 
   renderStats(perUser, wkUser, ahUser, perDay, timed);
-  renderDayChart(days);
+  dayData = days;
+  renderDayChart();
   renderHourChart(perHour, timed);
   renderLeaderboard(perUser, wkUser, ahUser, timed);
 
@@ -282,15 +317,38 @@ function renderStats(perUser, wkUser, ahUser, perDay, timed){
        timed && ah ? plural(ah[1],'submit')+' outside 8 AM-5 PM' : (timed ? 'all in work hours' : 'needs -t timestamps'));
 }
 
-function renderDayChart(days){
+function setDayZoom(action){
+  if(action === 'fit')      dayZoomIdx = 0;
+  else if(action === 'in')  dayZoomIdx = Math.min(ZOOM_STEPS.length-1, dayZoomIdx+1);
+  else if(action === 'out') dayZoomIdx = Math.max(0, dayZoomIdx-1);
+  renderDayChart();
+}
+
+function renderDayChart(){
+  const days = dayData;
+  if(!days.length) return;
   const chart = $('dayChart'), axis = $('dayAxis');
   chart.innerHTML = axis.innerHTML = '';
+
+  const colW = ZOOM_STEPS[dayZoomIdx];   // 0 = fit
+  const fit = colW === 0;
   const max = Math.max(1, ...days.map(d => d.count));
-  const labelEvery = Math.max(1, Math.ceil(days.length/24));
+
+  // container width available for the chart (minus padding)
+  const containerW = (chart.parentElement.clientWidth || 900) - 24;
+  const gap = fit ? (days.length > 160 ? 1 : 2) : 2;
+  // effective px each day occupies, used only to space out axis labels
+  const effW = fit ? Math.max(1, (containerW - gap*(days.length-1)) / days.length) : colW + gap;
+  const labelEvery = Math.max(1, Math.ceil(48 / effW));
+
+  chart.style.gap = axis.style.gap = gap + 'px';
+  chart.style.width = axis.style.width = fit ? '100%' : 'max-content';
 
   days.forEach((d,i) => {
     const col = document.createElement('div');
     col.className = 'bar-col'+(d.weekend?' weekend':'')+(d.count===0?' empty':'');
+    col.style.minWidth = fit ? '0' : colW+'px';
+    if(!fit) col.style.flex = '0 0 '+colW+'px';
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.style.height = d.count===0 ? '2px' : Math.max(3,(d.count/max)*100)+'%';
@@ -299,13 +357,28 @@ function renderDayChart(days){
     chart.appendChild(col);
 
     const lab = document.createElement('span');
+    lab.style.minWidth = fit ? '0' : colW+'px';
+    if(!fit) lab.style.flex = '0 0 '+colW+'px';
     if(i % labelEvery === 0){
       const [,m,dd] = d.key.split('-');
       lab.textContent = +m+'/'+ +dd;
     }
     axis.appendChild(lab);
   });
+
+  $('zFit').classList.toggle('on', fit);
+  $('zoomNote').textContent = fit
+    ? 'showing all '+days.length+' days'
+    : colW+'px/day — scroll to pan';
 }
+
+// keep "Fit all" honest when the window resizes
+let resizeT;
+window.addEventListener('resize', () => {
+  if(ZOOM_STEPS[dayZoomIdx] !== 0 || !dayData.length) return;
+  clearTimeout(resizeT);
+  resizeT = setTimeout(renderDayChart, 150);
+});
 
 function renderHourChart(perHour, timed){
   const sect = $('hourSection');
@@ -358,29 +431,44 @@ $('file').addEventListener('change', e => {
   const f = e.target.files[0];
   if(!f) return;
   const r = new FileReader();
-  r.onload = () => { $('input').value = r.result; analyze(); };
-  r.readAsText(f);
+  r.onload = () => { $('input').value = decodeBytes(r.result); analyze(); };
+  r.readAsArrayBuffer(f);
 });
 
 /* ---------- auto-load changes.txt ---------- */
 
-window.addEventListener('DOMContentLoaded', async () => {
-  try{
-    const r = await fetch(AUTO_FILE, {cache:'no-store'});
-    if(!r.ok) return;
-    const text = await r.text();
-    if(!text.trim()) return;
-    $('input').value = text;
-    analyze();
-    if(commits.length){
-      const n = $('notice');
-      n.textContent = 'Auto-loaded '+AUTO_FILE+' ('+plural(commits.length,'changelist')+').';
-      n.style.display = 'block';
+const AUTO_FILES = ['changes.txt', 'changes.log', 'p4changes.txt'];
+
+async function tryAutoLoad(){
+  const notice = $('notice');
+  for(const name of AUTO_FILES){
+    try{
+      const r = await fetch(name, {cache:'no-store'});
+      if(!r.ok) continue;
+      const text = decodeBytes(await r.arrayBuffer());
+      if(!text.trim()) continue;
+      $('input').value = text;
+      analyze();
+      if(commits.length){
+        notice.textContent = 'Auto-loaded '+name+' ('+plural(commits.length,'changelist')+').';
+        notice.style.display = 'block';
+      }
+      return;  // success
+    }catch(e){
+      // fetch threw — almost always the file:// restriction below
+      if(location.protocol === 'file:'){
+        notice.innerHTML = 'Auto-load needs the page served over http. Opening it by double-clicking (file://) blocks reading local files. '+
+          'From the folder holding this page and your changes file, run: <b>python -m http.server</b> and open '+
+          '<b>http://localhost:8000/'+location.pathname.split('/').pop()+'</b>. Until then, paste or open the file manually below.';
+        notice.style.display = 'block';
+        return;
+      }
     }
-  }catch(e){
-    // file:// blocks fetch, or no changes.txt present — fall back to manual input
   }
-});
+  // served over http but no matching file found: stay quiet, manual input still works
+}
+
+window.addEventListener('DOMContentLoaded', tryAutoLoad);
 
 /* ---------- demo data ---------- */
 
