@@ -1,0 +1,1363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>O Gauge Track Designer</title>
+<style>
+:root{
+  --bg:#14171b; --panel:#1c2026; --panel2:#232830; --line:#323843; --text:#e6e9ee; --muted:#9aa3b0;
+  --accent:#5fb3ff; --ok:#5ccf8a; --warn:#f2b84b; --err:#ff6b6b; --input:#12151a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{display:grid;grid-template-columns:350px 1fr;height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:0 0 40px}
+aside header{padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+h1{font-size:16px;margin:0}
+.sub{color:var(--muted);font-size:12px}
+section,details{padding:10px 16px;border-bottom:1px solid var(--line)}
+h2,summary{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+summary{cursor:pointer;margin:0}
+details[open] summary{margin-bottom:8px}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+button:hover{border-color:#4a5363}
+button.on{background:#20425f;border-color:var(--accent)}
+button.primary{background:#1f5f3a;border-color:#2f8a55}
+button:disabled{opacity:.5;cursor:default}
+label.chk{display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer}
+.muted{color:var(--muted)}
+.hint{color:var(--muted);font-size:12px;margin-top:8px}
+.grid2{display:grid;grid-template-columns:1fr 92px;gap:5px 8px;align-items:center}
+.grid2 label{color:var(--muted)}
+input[type=number],input[type=text]{width:100%;background:var(--input);color:var(--text);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font:inherit}
+input:disabled{opacity:.45}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:12px;margin-top:8px}
+.kv span:nth-child(odd){color:var(--muted)}
+.issue{padding:6px 8px;border-radius:6px;margin-bottom:5px;cursor:pointer;font-size:12px;border-left:3px solid}
+.issue.error{background:#3a1f22;border-color:var(--err)}
+.issue.warning{background:#3a3020;border-color:var(--warn)}
+.issue.info{background:#1f2c3a;border-color:var(--accent)}
+.okmsg{color:var(--ok)}
+#pieceList{max-height:230px;overflow-y:auto;margin-top:8px;border:1px solid var(--line);border-radius:6px}
+.prow{display:grid;grid-template-columns:52px 1fr auto;gap:6px;padding:4px 8px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:0}
+.prow:hover{background:var(--panel2)}
+.prow.sel{background:#20425f}
+.prow .bad{color:var(--err)}
+#bed{display:block;margin:10px auto 0;background:#101317;border-radius:6px}
+main{position:relative;display:grid;grid-template-rows:1fr 180px;min-width:0}
+#view{position:relative;min-height:0;overflow:hidden}
+#view canvas{display:block}
+#profileWrap{position:relative;border-top:1px solid var(--line);background:#111418}
+#profile{width:100%;height:100%;display:block}
+#profileTitle{position:absolute;left:10px;top:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;pointer-events:none}
+#hud:empty{display:none}
+#hud{position:absolute;left:10px;top:10px;background:rgba(20,23,27,.85);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:12px;pointer-events:none;max-width:60%}
+#legend{position:absolute;right:10px;top:10px;background:rgba(20,23,27,.85);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:11px;pointer-events:none}
+#legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+#busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);font-size:15px;z-index:5}
+@media (max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:auto 70vh;height:auto}aside{max-height:none}main{height:70vh}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<div id="app">
+<aside>
+  <header>
+    <h1>O Gauge Track Designer</h1>
+    <div class="sub">32 mm gauge · Gauge O Guild Fine Standard · profile from TrackDouble.blend</div>
+  </header>
+  <section>
+    <h2>Layout</h2>
+    <div class="btns">
+      <button id="bNew" title="Start a new layout">New</button>
+      <button id="bOpen" title="Open a saved .json layout">Open…</button>
+      <button id="bSave" title="Download the layout as .json">Save</button>
+      <button id="bUndo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="bRedo" title="Redo (Ctrl+Y)">Redo</button>
+      <input id="fileIn" type="file" accept=".json,application/json" hidden>
+    </div>
+  </section>
+  <section>
+    <h2>Draw</h2>
+    <div class="btns">
+      <button id="mSelect" class="on" title="Select and drag points (S)">Select / move</button>
+      <button id="mAdd" title="Click the ground to add points to the end of the line (A)">Add points</button>
+      <button id="bTop">Top view</button>
+      <button id="bFit">Fit</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="cClosed"> Closed loop (last point joins the first)</label>
+    <div class="hint" id="modeHint"></div>
+  </section>
+  <section>
+    <h2>Selected point</h2>
+    <div id="selBody"></div>
+  </section>
+  <section>
+    <h2>Checks</h2>
+    <div id="issues"></div>
+    <div class="kv" id="stats"></div>
+  </section>
+  <section>
+    <h2>Print pieces</h2>
+    <div class="btns">
+      <button id="bGen" class="primary">Generate pieces</button>
+      <button id="bExport">Export STLs (.zip)</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="cDetail"> Show printable 3D model</label>
+    <div id="pieceSummary" class="hint"></div>
+    <div id="pieceList" hidden></div>
+    <canvas id="bed" width="300" height="300" hidden></canvas>
+  </section>
+  <details id="settingsBox">
+    <summary>Standards &amp; settings</summary>
+    <div id="settings"></div>
+    <div class="btns" style="margin-top:10px"><button id="bResetSettings">Reset to defaults</button></div>
+  </details>
+  <details>
+    <summary>How it works</summary>
+    <div class="hint" style="margin-top:0">
+      <p>Click points on the ground to lay out the line. Each corner point becomes a curve: a transition (easement) spiral, a circular arc at the point's radius, and a spiral back out. The track runs tangent to the dashed lines between points.</p>
+      <p><b>Height</b> is the underside of the sleepers above the baseboard. Gradients run between the middles of the curves and are smoothed with vertical curves. Drag points up or down in the profile strip at the bottom.</p>
+      <p>Radii follow the Gauge O Guild guidance: about 1200&nbsp;mm is the practical minimum for mainline stock (with gauge widening), and 1500&nbsp;mm is the comfortable minimum. Below 1600&nbsp;mm the gauge is widened by up to 0.4&nbsp;mm (max 32.4&nbsp;mm).</p>
+      <p><b>Generate pieces</b> splits the line into pieces that fit your bed, turning them diagonally when that fits more track. Each piece has a dovetail socket at its start and a tab at its end, copied from your TrackDouble.blend joint. The export also includes risers to hold the track at the right height, a 1:1 SVG plan, and a README.</p>
+    </div>
+  </details>
+</aside>
+<main>
+  <div id="view"><div id="hud"></div>
+    <div id="legend"><div><i style="background:#8f9c8a"></i>Straight</div><div><i style="background:#4fa3d9"></i>Curve OK</div><div><i style="background:#f2b84b"></i>Below warn radius</div><div><i style="background:#ff6b6b"></i>Below minimum radius</div></div>
+    <div id="busy">Working…</div>
+  </div>
+  <div id="profileWrap"><canvas id="profile"></canvas><div id="profileTitle">Elevation profile (height of sleeper underside) — drag a point vertically to set its height</div></div>
+</main>
+</div>
+
+<script type="module">
+// ===== CORE BEGIN =====
+const Core = (() => {
+'use strict';
+// Rail cross-section (x, z in mm) sliced from TrackDouble.blend, object "TrackRails", rail at x < 0.
+const RAIL_SRC = [[-17.901,7.352],[-17.8916,7.2706],[-17.8916,5.12],[-18.1541,5.08],[-19.7582,4.8356],[-19.7582,3.5556],[-14.7449,3.5556],[-14.7449,4.8356],[-16.6116,5.12],[-16.6116,7.2706],[-16.6021,7.352],[-16.5743,7.4291],[-16.5296,7.4977],[-16.4703,7.5543],[-16.3997,7.5958],[-16.1271,7.7163],[-16.0847,7.7412],[-16.0492,7.7752],[-16.0224,7.8164],[-16.0057,7.8626],[-16.0,7.9114],[-16.0,9.0382],[-16.0194,9.1855],[-16.0762,9.3227],[-16.1666,9.4405],[-16.2844,9.5309],[-16.4216,9.5877],[-16.5689,9.6071],[-17.9343,9.6071],[-18.0815,9.5877],[-18.2187,9.5309],[-18.3365,9.4405],[-18.4269,9.3227],[-18.4837,9.1855],[-18.5031,9.0382],[-18.5031,7.9114],[-18.4975,7.8626],[-18.4808,7.8164],[-18.4539,7.7752],[-18.4184,7.7412],[-18.376,7.7163],[-18.1034,7.5958],[-18.0328,7.5543],[-17.9735,7.4977],[-17.9288,7.4291]];
+
+// Dimensions measured from TrackDouble.blend (mm).
+const G = {
+  tieHalfLen: 27.0222, tieHalfW: 5.3885, tieH: 3.5556,      // sleepers 54.04 x 10.78 x 3.56
+  jointBody: 8.53,                                          // half-sleeper either side of a joint
+  tabNeck: 6.812, tabTip: 8.736, tabLen: 3.332,             // dovetail tab (half-widths)
+  plateHalfU: 4.9955, plateHalfT: 1.778, plateZ0: 3.4556, plateZ1: 5.3333,   // rail clip plate
+  boltOffU: 3.5734, boltR: 0.818, boltZ0: 5.2333, boltZ1: 6.0444,            // hex bolts
+  railCenter: 17.2516, railTop: 9.6071, railOverlap: 0.1,
+  nominalGauge: 32.0,
+};
+// Profile relative to rail centre: du > 0 points away from the track centre.
+const RAIL_PROFILE = (() => {
+  let p = RAIL_SRC.map(([x, z]) => [-x - G.railCenter, z <= 3.5557 ? z - G.railOverlap : z]);
+  if (area2(p) < 0) p.reverse();
+  return p;
+})();
+
+const DEFAULT_SETTINGS = {
+  minRadius: 1200, warnRadius: 1500, defaultRadius: 1500, defaultEasement: 300, gaugeWidening: true,
+  maxGrade: 2.5, warnGrade: 2.0, vcurveLen: 400,
+  trackCentres: 80, overheadClearance: 154,
+  bedX: 180, bedY: 180, bedZ: 180, bedMargin: 3,
+  sleeperPitch: 23.7, dovetailClearance: 0.1,
+  risers: true, riserSpacing: 150, riserMinHeight: 3, riserDepth: 20,
+  snap: 10,
+};
+
+// ---------- small geometry helpers ----------
+function area2(P) { let a = 0; for (let i = 0, n = P.length; i < n; i++) { const p = P[i], q = P[(i + 1) % n]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; }
+
+// Ear clipping for a simple CCW polygon. Returns CCW index triples.
+function earClip(P) {
+  const n = P.length; if (n < 3) return [];
+  const V = [...Array(n).keys()], tris = [];
+  const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  let guard = 0;
+  while (V.length > 3 && guard++ < 10 * n * n) {
+    let cut = -1;
+    for (let i = 0; i < V.length; i++) {
+      const ia = V[(i + V.length - 1) % V.length], ib = V[i], ic = V[(i + 1) % V.length];
+      const A = P[ia], B = P[ib], C = P[ic];
+      if (cr(A, B, C) <= 1e-12) continue;
+      let ok = true;
+      for (const j of V) {
+        if (j === ia || j === ib || j === ic) continue;
+        const p = P[j];
+        if ((p[0] === A[0] && p[1] === A[1]) || (p[0] === B[0] && p[1] === B[1]) || (p[0] === C[0] && p[1] === C[1])) continue;
+        if (cr(A, B, p) >= -1e-12 && cr(B, C, p) >= -1e-12 && cr(C, A, p) >= -1e-12) { ok = false; break; }
+      }
+      if (ok) { cut = i; break; }
+    }
+    if (cut < 0) { // only flat or degenerate vertices left: drop the flattest
+      let best = 0, bv = Infinity;
+      for (let i = 0; i < V.length; i++) { const v = Math.abs(cr(P[V[(i + V.length - 1) % V.length]], P[V[i]], P[V[(i + 1) % V.length]])); if (v < bv) { bv = v; best = i; } }
+      V.splice(best, 1); continue;
+    }
+    tris.push([V[(cut + V.length - 1) % V.length], V[cut], V[(cut + 1) % V.length]]);
+    V.splice(cut, 1);
+  }
+  if (V.length === 3 && cr(P[V[0]], P[V[1]], P[V[2]]) > 1e-12) tris.push([V[0], V[1], V[2]]);
+  return tris;
+}
+
+function convexHull(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  up.pop(); lo.pop(); return lo.concat(up);
+}
+
+// Best rotation of a point set to fit a bx x by rectangle.
+function bestFit(hull, bx, by) {
+  const ev = (ang) => {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of hull) { const X = x * c - y * s, Y = x * s + y * c; if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }
+    const w = x1 - x0, h = y1 - y0;
+    return { ang, w, h, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, score: Math.max(w / bx, h / by) };
+  };
+  let best = null;
+  for (let d = 0; d < 180; d += 1) { const r = ev(d * Math.PI / 180); if (!best || r.score < best.score) best = r; }
+  const b0 = best.ang;
+  for (let d = -1; d <= 1.0001; d += 0.05) { const r = ev(b0 + d * Math.PI / 180); if (r.score < best.score) best = r; }
+  best.fits = best.score <= 1 + 1e-9;
+  return best;
+}
+
+// Clip polygon (t,u) to tMin <= t <= tMax.
+function clipT(poly, tMin, tMax) {
+  const clip = (P, keep, edge) => {
+    const out = [];
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i], b = P[(i + 1) % P.length], ia = keep(a), ib = keep(b);
+      if (ia) out.push(a);
+      if (ia !== ib) { const k = (edge - a[0]) / (b[0] - a[0]); out.push([edge, a[1] + k * (b[1] - a[1])]); }
+    }
+    return out;
+  };
+  let P = poly;
+  if (tMin > -Infinity) P = clip(P, (p) => p[0] >= tMin - 1e-12, tMin);
+  if (P.length && tMax < Infinity) P = clip(P, (p) => p[0] <= tMax + 1e-12, tMax);
+  // remove duplicate consecutive points
+  return P.filter((p, i) => { const q = P[(i + 1) % P.length]; return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9; });
+}
+
+// ---------- horizontal alignment ----------
+// Integrate a curve element with curvature varying linearly from k0 to k1 over length L. Returns displacement after distance t.
+function integ(h0, k0, k1, L, t, n) {
+  if (t <= 0) return [0, 0];
+  if (Math.abs(k1 - k0) < 1e-15) {
+    const k = k0;
+    if (Math.abs(k) < 1e-12) return [t * Math.cos(h0), t * Math.sin(h0)];
+    return [(Math.sin(h0 + k * t) - Math.sin(h0)) / k, (Math.cos(h0) - Math.cos(h0 + k * t)) / k];
+  }
+  n = n || 16;
+  const dk = (k1 - k0) / L, hs = t / n;
+  let sx = 0, sy = 0;
+  for (let i = 0; i <= n; i++) {
+    const tau = i * hs, h = h0 + k0 * tau + dk * tau * tau / 2, w = (i === 0 || i === n) ? 1 : (i % 2 ? 4 : 2);
+    sx += w * Math.cos(h); sy += w * Math.sin(h);
+  }
+  return [sx * hs / 3, sy * hs / 3];
+}
+
+function computeAlignment(design) {
+  const S = { ...DEFAULT_SETTINGS, ...(design.settings || {}) };
+  const pts = design.points || [];
+  const n = pts.length;
+  const closed = !!design.closed && n >= 3;
+  const res = { elements: [], total: 0, curves: [], segs: [], issues: [], closed, stations: [], fatal: false };
+  if (n < 2) { res.issues.push({ level: 'error', fatal: true, msg: 'Add at least two points to draw a track.' }); res.fatal = true; return res; }
+  if (design.closed && n < 3) res.issues.push({ level: 'warning', msg: 'A closed loop needs at least three points.' });
+  const P = (i) => pts[((i % n) + n) % n];
+  const curves = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const interior = closed || (i > 0 && i < n - 1);
+    curves[i] = { i, has: false, T: 0, interior };
+    if (!interior) continue;
+    const a = P(i - 1), b = P(i), c = P(i + 1);
+    let ix = b.x - a.x, iy = b.y - a.y, ox = c.x - b.x, oy = c.y - b.y;
+    const l1 = Math.hypot(ix, iy), l2 = Math.hypot(ox, oy);
+    if (l1 < 1e-6 || l2 < 1e-6) continue;
+    ix /= l1; iy /= l1; ox /= l2; oy /= l2;
+    const delta = Math.atan2(ix * oy - iy * ox, ix * ox + iy * oy), ad = Math.abs(delta);
+    curves[i].delta = delta;
+    if (ad < 1e-5) continue;
+    if (ad > Math.PI * 0.97) {
+      res.issues.push({ level: 'error', fatal: true, point: i, msg: `Point ${i + 1}: the line almost doubles back (${(ad * 180 / Math.PI).toFixed(0)}° turn). Use two points to make a hairpin.` });
+      res.fatal = true;
+      continue;
+    }
+    const R = Math.max(1, +b.R || S.defaultRadius);
+    let Ls = Math.max(0, b.Ls == null ? S.defaultEasement : +b.Ls);
+    let thS = Ls / (2 * R);
+    if (2 * thS > ad) { Ls = ad * R; thS = ad / 2; }
+    let xs = 0, ys = 0;
+    if (Ls > 0) [xs, ys] = integ(0, 0, 1 / R, Ls, Ls, 64);
+    const p = ys - R * (1 - Math.cos(thS)), k = xs - R * Math.sin(thS);
+    const T = (R + p) * Math.tan(ad / 2) + k;
+    const Lc = Math.max(0, R * (ad - 2 * thS));
+    Object.assign(curves[i], { has: true, T, R, Ls, Lc, sign: Math.sign(delta), shift: p, easeShort: Ls < (b.Ls == null ? S.defaultEasement : +b.Ls) - 1e-6 });
+  }
+  const nseg = closed ? n : n - 1;
+  for (let i = 0; i < nseg; i++) {
+    const a = P(i), b = P(i + 1);
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    const avail = d - curves[i].T - curves[(i + 1) % n].T;
+    res.segs.push({ i, d, avail, heading: Math.atan2(b.y - a.y, b.x - a.x) });
+    if (d < 1e-6) { res.issues.push({ level: 'error', fatal: true, point: i, msg: `Points ${i + 1} and ${(i + 1) % n + 1} are on top of each other.` }); res.fatal = true; }
+    else if (avail < -0.05) {
+      const j = (i + 1) % n, ca = curves[i].has, cb = curves[j].has;
+      const what = ca && cb ? `The curves at points ${i + 1} and ${j + 1} overlap by ${(-avail).toFixed(0)} mm.`
+        : `The curve at point ${ca ? i + 1 : j + 1} doesn't fit: it needs ${(-avail).toFixed(0)} mm more distance to point ${ca ? j + 1 : i + 1}.`;
+      res.issues.push({ level: 'error', fatal: true, point: ca && !cb ? i : j, msg: `${what} Move the points further apart, shorten the easements, or make the turn gentler.` });
+      res.fatal = true;
+    }
+  }
+  // Chain the elements together.
+  let x, y, h, s = 0;
+  const els = res.elements;
+  const addEl = (L, k0, k1, tag, pi) => {
+    if (!(L > 1e-9)) return;
+    els.push({ s0: s, L, x0: x, y0: y, h0: h, k0, k1, tag, pi });
+    const [dx, dy] = integ(h, k0, k1, L, L, 64);
+    x += dx; y += dy; h += k0 * L + (k1 - k0) * L / 2; s += L;
+  };
+  const addCurve = (i) => {
+    const c = curves[i];
+    c.sTS = s;
+    if (!c.has) { c.sMid = s; c.sST = s; return; }
+    const kk = c.sign / c.R;
+    addEl(c.Ls, 0, kk, 'spiral', i);
+    addEl(c.Lc, kk, kk, 'arc', i);
+    c.sMid = c.sTS + c.Ls + c.Lc / 2;
+    addEl(c.Ls, kk, 0, 'spiral', i);
+    c.sST = s;
+  };
+  if (!closed) {
+    x = P(0).x; y = P(0).y; h = res.segs[0].heading;
+    for (let i = 0; i < nseg; i++) {
+      addEl(Math.max(0, res.segs[i].avail), 0, 0, 'straight');
+      if (i + 1 < n - 1) addCurve(i + 1);
+    }
+    res.total = s;
+    res.stations.push({ s: 0, z: +P(0).z || 0, i: 0 });
+    for (let i = 1; i < n - 1; i++) res.stations.push({ s: curves[i].sMid, z: +P(i).z || 0, i });
+    res.stations.push({ s: res.total, z: +P(n - 1).z || 0, i: n - 1 });
+  } else {
+    const sg = res.segs[n - 1], a = P(n - 1);
+    const half = Math.max(0, sg.avail) / 2, off = curves[n - 1].T + half;
+    x = a.x + Math.cos(sg.heading) * off; y = a.y + Math.sin(sg.heading) * off; h = sg.heading;
+    const x0 = x, y0 = y;
+    addEl(half, 0, 0, 'straight');
+    for (let i = 0; i < n; i++) {
+      addCurve(i);
+      addEl(i < n - 1 ? Math.max(0, res.segs[i].avail) : half, 0, 0, 'straight');
+    }
+    res.total = s;
+    for (let i = 0; i < n; i++) res.stations.push({ s: curves[i].sMid, z: +P(i).z || 0, i });
+    const gap = Math.hypot(x - x0, y - y0);
+    if (!res.fatal && gap > 0.5) res.issues.push({ level: 'warning', msg: `The loop doesn't close exactly (${gap.toFixed(1)} mm gap).` });
+  }
+  res.curves = curves;
+  if (!(res.total > 0)) { res.fatal = true; res.issues.push({ level: 'error', fatal: true, msg: 'The track has no length yet.' }); }
+  return res;
+}
+
+function poseAt(al, s) {
+  const els = al.elements;
+  if (!els.length) return { x: 0, y: 0, h: 0, k: 0, tx: 1, ty: 0, nx: 0, ny: 1, s };
+  if (al.closed) s = ((s % al.total) + al.total) % al.total; else s = Math.min(Math.max(s, 0), al.total);
+  let lo = 0, hi = els.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (els[mid].s0 <= s) lo = mid; else hi = mid - 1; }
+  const e = els[lo], t = Math.min(Math.max(s - e.s0, 0), e.L);
+  const [dx, dy] = integ(e.h0, e.k0, e.k1, e.L, t, 16);
+  const h = e.h0 + e.k0 * t + (e.k1 - e.k0) * t * t / (2 * e.L);
+  const k = e.k0 + (e.k1 - e.k0) * t / e.L;
+  const c = Math.cos(h), sn = Math.sin(h);
+  return { x: e.x0 + dx, y: e.y0 + dy, h, k, tx: c, ty: sn, nx: -sn, ny: c, s };
+}
+
+// ---------- vertical profile ----------
+function buildProfile(al, S) {
+  const st = al.stations, m = st.length, total = al.total;
+  const prof = { closed: al.closed, total, V: [], segs: [] };
+  if (m < 2 || !(total > 0)) { prof.V = [{ s: 0, z: st[0] ? st[0].z : 0, gL: 0, gR: 0, L: 0 }]; return prof; }
+  const V = st.map((o) => ({ s: o.s, z: o.z, i: o.i, gL: 0, gR: 0, L: 0, dL: Infinity, dR: Infinity }));
+  const nseg = al.closed ? m : m - 1;
+  for (let j = 0; j < nseg; j++) {
+    const A = V[j], B = V[(j + 1) % m];
+    let ds = B.s - A.s; if (al.closed && j === m - 1) ds += total;
+    const g = ds > 1e-6 ? (B.z - A.z) / ds : 0;
+    prof.segs.push({ j, s0: A.s, s1: A.s + ds, z0: A.z, z1: B.z, g, ds, i0: A.i, i1: B.i });
+    A.gR = g; B.gL = g; A.dR = ds; B.dL = ds;
+  }
+  if (!al.closed) { V[0].gL = V[0].gR; V[m - 1].gR = V[m - 1].gL; }
+  for (let j = 0; j < m; j++) {
+    const v = V[j];
+    if (!al.closed && (j === 0 || j === m - 1)) { v.L = 0; continue; }
+    v.L = Math.abs(v.gR - v.gL) < 1e-9 ? 0 : Math.max(0, Math.min(S.vcurveLen, v.dL, v.dR));
+  }
+  prof.V = al.closed ? [{ ...V[m - 1], s: V[m - 1].s - total }, ...V, { ...V[0], s: V[0].s + total }] : V;
+  return prof;
+}
+
+function elevAt(prof, s) {
+  const V = prof.V;
+  if (V.length === 1) return { z: V[0].z, g: 0 };
+  if (prof.closed) s = ((s % prof.total) + prof.total) % prof.total;
+  else s = Math.min(Math.max(s, V[0].s), V[V.length - 1].s);
+  let lo = 0, hi = V.length - 2;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (V[mid].s <= s) lo = mid; else hi = mid - 1; }
+  const A = V[lo], B = V[lo + 1];
+  for (const v of [A, B]) {
+    if (v.L > 0 && Math.abs(s - v.s) <= v.L / 2) {
+      const a = v.s - v.L / 2, x = s - a;
+      return { z: v.z + v.gL * (s - v.s) + (v.gR - v.gL) * x * x / (2 * v.L), g: v.gL + (v.gR - v.gL) * x / v.L };
+    }
+  }
+  const ds = B.s - A.s, g = ds > 1e-9 ? (B.z - A.z) / ds : 0;
+  return { z: A.z + g * (s - A.s), g };
+}
+
+function widening(k, S) {
+  if (!S.gaugeWidening) return 0;
+  const R = 1 / Math.max(Math.abs(k), 1e-12);
+  if (R >= 1600) return 0;
+  return Math.min(0.4, 0.4 * (1600 - R) / 400);
+}
+
+// ---------- checks ----------
+function validate(al, prof, S) {
+  const out = al.issues.slice();
+  if (al.fatal) return out;
+  for (const c of al.curves) {
+    if (!c || !c.has) continue;
+    const p = poseAt(al, c.sMid);
+    const at = { x: p.x, y: p.y, z: elevAt(prof, c.sMid).z };
+    if (c.R < S.minRadius - 1e-6) out.push({ level: 'error', point: c.i, at, msg: `Point ${c.i + 1}: radius ${c.R.toFixed(0)} mm is below the ${S.minRadius} mm minimum.` });
+    else if (c.R < S.warnRadius - 1e-6) out.push({ level: 'warning', point: c.i, at, msg: `Point ${c.i + 1}: radius ${c.R.toFixed(0)} mm is under ${S.warnRadius} mm. Needs accurate track and stock; gauge widened to ${(G.nominalGauge + widening(1 / c.R, S)).toFixed(2)} mm.` });
+    if (c.easeShort) out.push({ level: 'info', point: c.i, at, msg: `Point ${c.i + 1}: the turn is too small for the full easement, so it is all transition (no constant-radius arc).` });
+  }
+  for (const sg of prof.segs) {
+    const pct = Math.abs(sg.g) * 100;
+    const s = (sg.s0 + sg.s1) / 2, p = poseAt(al, s);
+    const at = { x: p.x, y: p.y, z: elevAt(prof, s).z };
+    const lbl = `Points ${sg.i0 + 1}→${sg.i1 + 1}`;
+    if (sg.ds < 1 && Math.abs(sg.z1 - sg.z0) > 0.01) out.push({ level: 'error', point: sg.i1, at, msg: `${lbl}: height changes with no track length in between.` });
+    else if (pct > S.maxGrade + 1e-9) out.push({ level: 'error', point: sg.i1, at, msg: `${lbl}: gradient ${pct.toFixed(2)}% (1 in ${Math.round(100 / pct)}) is steeper than the ${S.maxGrade}% limit.` });
+    else if (pct > S.warnGrade + 1e-9) out.push({ level: 'warning', point: sg.i1, at, msg: `${lbl}: gradient ${pct.toFixed(2)}% (1 in ${Math.round(100 / pct)}) is steep; long trains may struggle.` });
+  }
+  (al.stations || []).forEach((st) => { if (st.z < 0) out.push({ level: 'warning', point: st.i, msg: `Point ${st.i + 1} is below the baseboard (height ${st.z} mm).` }); });
+  out.push(...clearanceIssues(al, prof, S));
+  return out;
+}
+
+function clearanceIssues(al, prof, S) {
+  const out = [], total = al.total;
+  if (!(total > 0)) return out;
+  const step = Math.max(20, total / 4000), n = Math.floor(total / step) + 1;
+  const P = [];
+  for (let i = 0; i < n; i++) { const s = Math.min(i * step, total); const p = poseAt(al, s); P.push({ s, x: p.x, y: p.y, z: elevAt(prof, s).z }); }
+  const C = S.trackCentres, cell = C, grid = new Map();
+  P.forEach((p, i) => { const k = Math.floor(p.x / cell) + ',' + Math.floor(p.y / cell); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); });
+  const need = S.overheadClearance + G.railTop, found = [];
+  for (let i = 0; i < n; i++) {
+    const p = P[i], cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const L = grid.get((cx + dx) + ',' + (cy + dy)); if (!L) continue;
+      for (const j of L) {
+        if (j <= i) continue;
+        const q = P[j];
+        let ds = q.s - p.s; if (al.closed) ds = Math.min(ds, total - ds);
+        if (ds < 2.5 * C) continue;
+        const d = Math.hypot(p.x - q.x, p.y - q.y); if (d >= C) continue;
+        const dz = Math.abs(p.z - q.z); if (dz >= need) continue;
+        if (found.some((f) => Math.abs(f.s1 - p.s) < 400 && Math.abs(f.s2 - q.s) < 400)) continue;
+        found.push({ s1: p.s, s2: q.s, d, dz, at: { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: Math.max(p.z, q.z) } });
+      }
+    }
+  }
+  for (const f of found.slice(0, 8)) {
+    let msg;
+    if (f.dz < 2 * G.railTop) msg = f.d < 2 * G.tieHalfLen ? `The track runs into itself (at ${(f.s1 / 1000).toFixed(2)} m and ${(f.s2 / 1000).toFixed(2)} m along the line).` : `Side-by-side tracks only ${f.d.toFixed(0)} mm apart (minimum track centres ${C} mm).`;
+    else msg = `Only ${(f.dz - G.railTop).toFixed(0)} mm headroom where the track crosses itself; needs ${S.overheadClearance} mm above the rail (Guild structure gauge).`;
+    out.push({ level: 'error', at: f.at, msg });
+  }
+  return out;
+}
+
+// ---------- cutting into printable pieces ----------
+function bandPoints(al, a, b) {
+  const pts = [], hw = G.tieHalfLen + 0.15, n = Math.max(2, Math.ceil((b - a) / 5));
+  for (let i = 0; i <= n; i++) { const p = poseAt(al, a + (b - a) * i / n); pts.push([p.x + p.nx * hw, p.y + p.ny * hw], [p.x - p.nx * hw, p.y - p.ny * hw]); }
+  const p = poseAt(al, b);
+  for (const sg of [1, -1]) pts.push([p.x + p.tx * G.tabLen + sg * p.nx * G.tabTip, p.y + p.ty * G.tabLen + sg * p.ny * G.tabTip]);
+  return pts;
+}
+
+function chop(al, S) {
+  const total = al.total, bx = S.bedX - 2 * S.bedMargin, by = S.bedY - 2 * S.bedMargin;
+  const minLen = 2 * G.jointBody + 6;
+  const fitsLen = (a, L) => bestFit(convexHull(bandPoints(al, a, a + L)), bx, by).fits;
+  if (total < minLen) return { cuts: [0, total], error: `The track is shorter than one piece (${minLen.toFixed(0)} mm).` };
+  if (!fitsLen(0, minLen)) return { cuts: null, error: 'The build plate is too small for even the shortest piece of track.' };
+  const cuts = [0]; let a = 0;
+  while (total - a > 1e-6) {
+    const rem = total - a;
+    if (fitsLen(a, rem)) { cuts.push(total); break; }
+    let lo = minLen, hi = rem;
+    for (let it = 0; it < 30 && hi - lo > 0.05; it++) { const mid = (lo + hi) / 2; if (fitsLen(a, mid)) lo = mid; else hi = mid; }
+    let L = lo;
+    if (rem - L < minLen) L = Math.max(minLen, rem - minLen);
+    cuts.push(a + L); a += L;
+  }
+  const N = cuts.length - 1;
+  if (N > 1) { // even out the piece lengths when they all still fit
+    const Le = total / N; let ok = true;
+    for (let k = 0; k < N && ok; k++) ok = fitsLen(k * Le, Le);
+    if (ok) return { cuts: [...Array(N + 1)].map((_, k) => k === N ? total : k * Le) };
+  }
+  return { cuts };
+}
+
+function pieceTiePositions(a, b, S) {
+  const L = b - a, n = Math.max(1, Math.round(L / S.sleeperPitch)), out = [];
+  const lim = G.jointBody + G.tieHalfW + 0.8;
+  for (let k = 1; k < n; k++) { const s = a + k * L / n; if (s - a >= lim && b - s >= lim) out.push(s); }
+  return out;
+}
+
+const tieRect = () => [[-G.tieHalfW, -G.tieHalfLen], [G.tieHalfW, -G.tieHalfLen], [G.tieHalfW, G.tieHalfLen], [-G.tieHalfW, G.tieHalfLen]];
+function femalePoly(S) {
+  const c = S.dovetailClearance, H = G.tieHalfLen, J = G.jointBody;
+  const sn = G.tabNeck + c, st = G.tabTip + c, sd = G.tabLen + c;
+  return [[0, -H], [J, -H], [J, H], [0, H], [0, sn], [sd, st], [sd, -st], [0, -sn]];
+}
+function malePoly() {
+  const H = G.tieHalfLen, J = G.jointBody;
+  return [[-J, -H], [0, -H], [0, -G.tabNeck], [G.tabLen, -G.tabTip], [G.tabLen, G.tabTip], [0, G.tabNeck], [0, H], [-J, H]];
+}
+const toWorld = (F, poly) => poly.map(([t, u]) => [F.x + F.tx * t + F.nx * u, F.y + F.ty * t + F.ny * u]);
+
+function pieceOutlines(al, S, pc) {
+  const ties = [];
+  ties.push(toWorld(poseAt(al, pc.a), femalePoly(S)));
+  ties.push(toWorld(poseAt(al, pc.b), malePoly()));
+  for (const s of pc.ties) ties.push(toWorld(poseAt(al, s), tieRect()));
+  const rails = [[], []], n = Math.max(2, Math.ceil((pc.b - pc.a) / 5));
+  for (let i = 0; i <= n; i++) {
+    const p = poseAt(al, pc.a + (pc.b - pc.a) * i / n), rc = G.railCenter + widening(p.k, S) / 2;
+    rails[0].push([p.x + p.nx * rc, p.y + p.ny * rc]); rails[1].push([p.x - p.nx * rc, p.y - p.ny * rc]);
+  }
+  return { ties, rails };
+}
+
+function generate(design) {
+  const S = { ...DEFAULT_SETTINGS, ...(design.settings || {}) };
+  const al = computeAlignment(design), prof = buildProfile(al, S), issues = validate(al, prof, S);
+  const gen = { S, al, prof, issues, pieces: [], risers: [], error: null };
+  if (al.fatal) { gen.error = 'Fix the errors marked "blocking" before generating pieces.'; return gen; }
+  const ch = chop(al, S);
+  if (!ch.cuts) { gen.error = ch.error; return gen; }
+  if (ch.error) issues.push({ level: 'warning', msg: ch.error });
+  const bx = S.bedX - 2 * S.bedMargin, by = S.bedY - 2 * S.bedMargin;
+  for (let k = 0; k < ch.cuts.length - 1; k++) {
+    const a = ch.cuts[k], b = ch.cuts[k + 1];
+    const pc = { idx: k, id: 'P' + String(k + 1).padStart(3, '0'), a, b, len: b - a, ties: pieceTiePositions(a, b, S) };
+    let kmax = 0, gmax = 0;
+    for (let s = a; s <= b + 1e-9; s += Math.max(2, (b - a) / 40)) { kmax = Math.max(kmax, Math.abs(poseAt(al, s).k)); gmax = Math.max(gmax, Math.abs(elevAt(prof, s).g)); }
+    pc.minR = kmax > 1e-9 ? 1 / kmax : Infinity; pc.maxGrade = gmax * 100;
+    pc.outl = pieceOutlines(al, S, pc);
+    const pts = pc.outl.ties.flat();
+    pc.fit = bestFit(convexHull(pts), bx, by);
+    if (!pc.fit.fits) issues.push({ level: 'error', msg: `${pc.id} doesn't fit the bed (${pc.fit.w.toFixed(1)} × ${pc.fit.h.toFixed(1)} mm).` });
+    gen.pieces.push(pc);
+  }
+  gen.risers = planRisers(al, prof, S, gen.pieces);
+  for (const r of gen.risers) if (Math.max(r.h0, r.h1) > S.bedZ) issues.push({ level: 'warning', msg: `Riser ${r.id} is ${Math.max(r.h0, r.h1).toFixed(0)} mm tall, taller than the ${S.bedZ} mm build height. Print it lying on its side or stack two.` });
+  return gen;
+}
+
+function planRisers(al, prof, S, pieces) {
+  if (!S.risers || !pieces.length) return [];
+  const cand = [];
+  pieces.forEach((pc) => { cand.push({ s: pc.a, joint: true }); pc.ties.forEach((s) => cand.push({ s, joint: false })); });
+  if (!al.closed) cand.push({ s: al.total, joint: true });
+  cand.sort((p, q) => p.s - q.s);
+  const chosen = []; let last = -Infinity;
+  for (let i = 0; i < cand.length; i++) {
+    const c = cand[i], nx = cand[i + 1];
+    if (c.joint || !nx || nx.s - last > S.riserSpacing) { chosen.push(c); last = c.s; }
+  }
+  const d = S.riserDepth, out = [];
+  for (const c of chosen) {
+    let s = c.s;
+    if (!al.closed) s = Math.min(Math.max(s, d / 2), al.total - d / 2);
+    const h0 = elevAt(prof, s - d / 2).z, h1 = elevAt(prof, s + d / 2).z, hc = elevAt(prof, s).z;
+    if (Math.min(h0, h1) < S.riserMinHeight) continue;
+    out.push({ s, h0, h1, hc, joint: c.joint });
+  }
+  out.forEach((r, i) => { r.id = 'R' + String(i + 1).padStart(3, '0'); });
+  return out;
+}
+
+// ---------- solid geometry ----------
+function pushTri(out, a, b, c) { out.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); }
+
+// Extrude a (t,u) polygon placed in frame F between heights z0 and z1 (numbers or functions of t).
+function prism(out, F, poly, z0, z1) {
+  let P = poly; if (area2(P) < 0) P = P.slice().reverse();
+  if (P.length < 3) return;
+  const W = toWorld(F, P), e = F.e || 0;
+  const zb = P.map(([t, u]) => e + (typeof z0 === 'function' ? z0(t, u) : z0));
+  const zt = P.map(([t, u]) => e + (typeof z1 === 'function' ? z1(t, u) : z1));
+  const B = W.map((w, i) => [w[0], w[1], zb[i]]), T = W.map((w, i) => [w[0], w[1], zt[i]]);
+  for (const [i, j, k] of earClip(P)) { pushTri(out, T[i], T[j], T[k]); pushTri(out, B[i], B[k], B[j]); }
+  for (let i = 0, n = P.length; i < n; i++) { const j = (i + 1) % n; pushTri(out, B[i], B[j], T[j]); pushTri(out, B[i], T[j], T[i]); }
+}
+
+function frameAt(al, prof, s, mode) { const p = poseAt(al, s); p.e = mode === 'view' ? elevAt(prof, s).z : 0; return p; }
+
+function clipsAt(out, F, S, half) {
+  const rc = G.railCenter + widening(F.k, S) / 2;
+  const t0 = half === 'after' ? 0 : -G.plateHalfT, t1 = half === 'before' ? 0 : G.plateHalfT;
+  for (const sg of [1, -1]) {
+    const ua = sg * (rc - G.plateHalfU), ub = sg * (rc + G.plateHalfU);
+    const u0 = Math.min(ua, ub), u1 = Math.max(ua, ub);
+    prism(out, F, [[t0, u0], [t1, u0], [t1, u1], [t0, u1]], G.plateZ0, G.plateZ1);
+    for (const d of [-1, 1]) {
+      const uc = sg * (rc + d * G.boltOffU), hex = [];
+      for (let k = 0; k < 6; k++) { const th = k * Math.PI / 3; hex.push([G.boltR * Math.sin(th), uc + G.boltR * Math.cos(th)]); }
+      const poly = clipT(hex, t0, t1);
+      if (poly.length >= 3) prism(out, F, poly, G.boltZ0, G.boltZ1);
+    }
+  }
+}
+
+function sweepRail(out, al, prof, S, a, b, sg, mode) {
+  let curvy = false;
+  for (const e of al.elements) if (e.s0 < b && e.s0 + e.L > a && (e.k0 !== 0 || e.k1 !== 0)) { curvy = true; break; }
+  let n = curvy ? Math.ceil((b - a) / (mode === 'view' ? 6 : 3)) : 1;
+  if (mode === 'view') n = Math.max(n, Math.ceil((b - a) / 40));
+  n = Math.max(1, n);
+  const pr = sg > 0 ? RAIL_PROFILE : RAIL_PROFILE.slice().reverse();
+  const m = pr.length, rings = [];
+  for (let i = 0; i <= n; i++) {
+    const F = frameAt(al, prof, a + (b - a) * i / n, mode), rc = G.railCenter + widening(F.k, S) / 2;
+    rings.push(pr.map(([du, z]) => { const u = sg * (rc + du); return [F.x + F.nx * u, F.y + F.ny * u, z + F.e]; }));
+  }
+  for (let i = 0; i < n; i++) {
+    const R0 = rings[i], R1 = rings[i + 1];
+    for (let k = 0; k < m; k++) { const k2 = (k + 1) % m; pushTri(out, R0[k], R0[k2], R1[k2]); pushTri(out, R0[k], R1[k2], R1[k]); }
+  }
+  const tris = earClip(pr.map(([du, z]) => [sg * du, z]));
+  const A = rings[0], B = rings[n];
+  for (const [i, j, k] of tris) { pushTri(out, B[i], B[j], B[k]); pushTri(out, A[i], A[k], A[j]); }
+}
+
+function buildPieceShells(gen, pc, mode) {
+  const { al, prof, S } = gen, out = { tie: [], rail: [] };
+  const Fa = frameAt(al, prof, pc.a, mode), Fb = frameAt(al, prof, pc.b, mode);
+  prism(out.tie, Fa, femalePoly(S), 0, G.tieH);
+  prism(out.tie, Fb, malePoly(), 0, G.tieH);
+  clipsAt(out.rail, Fa, S, 'after');
+  clipsAt(out.rail, Fb, S, 'before');
+  for (const s of pc.ties) { const F = frameAt(al, prof, s, mode); prism(out.tie, F, tieRect(), 0, G.tieH); clipsAt(out.rail, F, S, 'full'); }
+  sweepRail(out.rail, al, prof, S, pc.a, pc.b, 1, mode);
+  sweepRail(out.rail, al, prof, S, pc.a, pc.b, -1, mode);
+  return out;
+}
+
+function riserShell(gen, r, mode) {
+  const { al, prof, S } = gen, out = [], d = S.riserDepth, H = G.tieHalfLen;
+  const F = mode === 'view' ? { ...poseAt(al, r.s), e: 0 } : { x: 0, y: 0, tx: 1, ty: 0, nx: 0, ny: 1, e: 0 };
+  prism(out, F, [[-d / 2, -H], [d / 2, -H], [d / 2, H], [-d / 2, H]], 0, (t) => elevAt(prof, r.s + t).z);
+  return out;
+}
+
+function transformXY(tris, fit) {
+  const c = Math.cos(fit.ang), s = Math.sin(fit.ang);
+  for (let i = 0; i < tris.length; i += 3) {
+    const x = tris[i], y = tris[i + 1];
+    tris[i] = x * c - y * s - fit.cx; tris[i + 1] = x * s + y * c - fit.cy;
+  }
+  return tris;
+}
+
+function toSTL(tris, name) {
+  const nt = tris.length / 9, buf = new ArrayBuffer(84 + 50 * nt), dv = new DataView(buf);
+  const head = (name || 'track').slice(0, 79);
+  for (let i = 0; i < head.length; i++) dv.setUint8(i, head.charCodeAt(i) & 0x7f);
+  dv.setUint32(80, nt, true);
+  let o = 84;
+  for (let t = 0; t < nt; t++) {
+    const b = t * 9;
+    const ux = tris[b + 3] - tris[b], uy = tris[b + 4] - tris[b + 1], uz = tris[b + 5] - tris[b + 2];
+    const vx = tris[b + 6] - tris[b], vy = tris[b + 7] - tris[b + 1], vz = tris[b + 8] - tris[b + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+    dv.setFloat32(o, nx, true); dv.setFloat32(o + 4, ny, true); dv.setFloat32(o + 8, nz, true); o += 12;
+    for (let k = 0; k < 9; k++) { dv.setFloat32(o, tris[b + k], true); o += 4; }
+    dv.setUint16(o, 0, true); o += 2;
+  }
+  return buf;
+}
+
+function pieceSTL(gen, i) {
+  const pc = gen.pieces[i], sh = buildPieceShells(gen, pc, 'print');
+  const tris = transformXY(sh.tie.concat(sh.rail), pc.fit);
+  return toSTL(tris, `O gauge track ${pc.id} ${pc.len.toFixed(1)}mm`);
+}
+function riserSTL(gen, j) {
+  const r = gen.risers[j];
+  return toSTL(riserShell(gen, r, 'print'), `O gauge riser ${r.id} ${r.hc.toFixed(1)}mm`);
+}
+
+function signedVolume(tris) {
+  let v = 0;
+  for (let i = 0; i < tris.length; i += 9) {
+    const [ax, ay, az, bx, by, bz, cx, cy, cz] = tris.slice(i, i + 9);
+    v += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+  }
+  return v;
+}
+
+// ---------- 1:1 plan + readme ----------
+function planSVG(gen, design) {
+  const { al, pieces, risers, S } = gen, total = al.total;
+  const n = Math.max(2, Math.ceil(total / 8)), L = [], R = [], C = [], RL = [], RR = [];
+  const hw = G.tieHalfLen;
+  for (let i = 0; i <= n; i++) {
+    const p = poseAt(al, total * i / n);
+    L.push([p.x + p.nx * hw, p.y + p.ny * hw]); R.push([p.x - p.nx * hw, p.y - p.ny * hw]); C.push([p.x, p.y]);
+    const rc = G.railCenter + widening(p.k, S) / 2;
+    RL.push([p.x + p.nx * rc, p.y + p.ny * rc]); RR.push([p.x - p.nx * rc, p.y - p.ny * rc]);
+  }
+  const all = L.concat(R, (design.points || []).map((q) => [q.x, q.y]));
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of all) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const m = 60; x0 -= m; y0 -= m; x1 += m; y1 += m + 40;
+  const W = x1 - x0, H = y1 - y0, f = (v) => v.toFixed(2);
+  const pl = (A) => A.map(([x, y]) => f(x) + ',' + f(-y)).join(' ');
+  let s = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${f(W)}mm" height="${f(H)}mm" viewBox="${f(x0)} ${f(-y1)} ${f(W)} ${f(H)}" font-family="Arial,Helvetica,sans-serif">\n`;
+  s += `<rect x="${f(x0)}" y="${f(-y1)}" width="${f(W)}" height="${f(H)}" fill="#fff"/>\n`;
+  s += `<polygon points="${pl(al.closed ? L : L.concat(R.slice().reverse()))}" fill="#efe6d8" stroke="#6b5b45" stroke-width="0.6"/>\n`;
+  if (al.closed) s += `<polygon points="${pl(R)}" fill="#fff" stroke="#6b5b45" stroke-width="0.6"/>\n`;
+  s += `<polyline points="${pl(RL)}" fill="none" stroke="#333" stroke-width="0.8"/><polyline points="${pl(RR)}" fill="none" stroke="#333" stroke-width="0.8"/>\n`;
+  s += `<polyline points="${pl(C)}" fill="none" stroke="#999" stroke-width="0.3" stroke-dasharray="4 3"/>\n`;
+  for (const r of risers) {
+    const F = poseAt(al, r.s), d = S.riserDepth / 2;
+    s += `<polygon points="${pl(toWorld(F, [[-d, -hw], [d, -hw], [d, hw], [-d, hw]]))}" fill="rgba(40,120,220,0.25)" stroke="#2878dc" stroke-width="0.4"/>\n`;
+    const t = toWorld(F, [[0, -hw - 14]])[0];
+    s += `<text x="${f(t[0])}" y="${f(-t[1])}" font-size="7" fill="#2878dc" text-anchor="middle" dominant-baseline="middle">${r.id} ${r.hc.toFixed(1)}</text>\n`;
+  }
+  for (const pc of pieces) {
+    const F = poseAt(al, pc.a), ln = toWorld(F, [[0, -hw - 6], [0, hw + 6]]);
+    s += `<line x1="${f(ln[0][0])}" y1="${f(-ln[0][1])}" x2="${f(ln[1][0])}" y2="${f(-ln[1][1])}" stroke="#d33" stroke-width="0.8"/>\n`;
+    const M = poseAt(al, (pc.a + pc.b) / 2), t = toWorld(M, [[0, hw + 16]])[0];
+    s += `<text x="${f(t[0])}" y="${f(-t[1])}" font-size="10" font-weight="bold" fill="#b22" text-anchor="middle" dominant-baseline="middle">${pc.id}</text>\n`;
+  }
+  (design.points || []).forEach((q, i) => {
+    s += `<circle cx="${f(q.x)}" cy="${f(-q.y)}" r="3" fill="none" stroke="#777" stroke-width="0.5"/><text x="${f(q.x + 6)}" y="${f(-q.y - 6)}" font-size="8" fill="#777">${i + 1}</text>\n`;
+  });
+  const tx = x0 + 10, ty = -(y1 - 12);
+  s += `<text x="${f(tx)}" y="${f(ty)}" font-size="12" font-weight="bold">O gauge track plan, 1:1 (${(total / 1000).toFixed(2)} m, ${pieces.length} pieces, ${risers.length} risers)</text>\n`;
+  s += `<text x="${f(tx)}" y="${f(ty + 14)}" font-size="8" fill="#555">Red lines: joints. Blue: risers with height (mm, sleeper underside above baseboard). Grey circles: design points.</text>\n`;
+  s += `<line x1="${f(tx)}" y1="${f(ty + 24)}" x2="${f(tx + 100)}" y2="${f(ty + 24)}" stroke="#000" stroke-width="1"/><text x="${f(tx + 104)}" y="${f(ty + 27)}" font-size="8">100 mm</text>\n`;
+  s += `</svg>\n`;
+  return s;
+}
+
+function readme(gen) {
+  const { al, pieces, risers, S } = gen, lines = [];
+  lines.push('O GAUGE TRACK - PRINT SET', '='.repeat(25), '', `Generated: ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`);
+  lines.push(`Track length: ${(al.total / 1000).toFixed(3)} m  (${al.closed ? 'closed loop' : 'open line'})`);
+  lines.push(`Gauge: 32.0 mm nominal, widened up to 32.4 mm on curves under R1600${S.gaugeWidening ? '' : ' (widening OFF)'}`);
+  lines.push(`Bed: ${S.bedX} x ${S.bedY} mm (margin ${S.bedMargin} mm). Dovetail clearance: ${S.dovetailClearance} mm per side.`, '');
+  lines.push('PRINTING', '--------');
+  lines.push('* pieces/*.stl are already laid flat and turned to fit the bed. Print sleeper-side down; no supports needed.');
+  lines.push('* Each file holds several overlapping solids (sleepers, rails, clips). Slicers merge them automatically.');
+  lines.push('* risers/*.stl stand upright on their footprint; the sloped top matches the gradient.', '');
+  lines.push('ASSEMBLY', '--------');
+  lines.push('* Lay the pieces in number order. The dovetail tab at the END of each piece slides into the');
+  lines.push('  socket at the START of the next one' + (al.closed ? ' (the last piece joins back into P001).' : '.'));
+  lines.push('* layout_plan.svg is a 1:1 plan: print it tiled, or use it to mark out the baseboard.');
+  lines.push('* Glue each riser under the joint or sleeper marked on the plan. Riser heights are to the sleeper underside.', '');
+  lines.push('PIECES', '------', 'id      start(mm)  length(mm)  tightest radius  max grade  bed footprint');
+  for (const p of pieces) lines.push(`${p.id}  ${p.a.toFixed(1).padStart(10)}  ${p.len.toFixed(1).padStart(10)}  ${(isFinite(p.minR) ? 'R' + p.minR.toFixed(0) : 'straight').padStart(15)}  ${(p.maxGrade.toFixed(2) + '%').padStart(9)}  ${p.fit.w.toFixed(1)} x ${p.fit.h.toFixed(1)}`);
+  if (risers.length) {
+    lines.push('', 'RISERS', '------', 'id      at(mm)    height start/centre/end (mm)');
+    for (const r of risers) lines.push(`${r.id}  ${r.s.toFixed(1).padStart(8)}    ${r.h0.toFixed(1)} / ${r.hc.toFixed(1)} / ${r.h1.toFixed(1)}${r.joint ? '   (under joint)' : ''}`);
+  }
+  const iss = gen.issues.filter((i) => i.level !== 'info');
+  if (iss.length) { lines.push('', 'OPEN ISSUES AT EXPORT', '---------------------'); for (const i of iss) lines.push(`[${i.level}] ${i.msg}`); }
+  return lines.join('\r\n') + '\r\n';
+}
+
+return { G, DEFAULT_SETTINGS, RAIL_PROFILE, computeAlignment, poseAt, buildProfile, elevAt, widening, validate, generate,
+  buildPieceShells, riserShell, pieceSTL, riserSTL, planSVG, readme, signedVolume, earClip, convexHull, bestFit, transformXY, toSTL };
+})();
+// ===== CORE END =====
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = (id) => document.getElementById(id);
+const STORE_KEY = 'ogauge-track-designer.v1';
+const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d);
+
+function demoDesign() {
+  return { version: 1, closed: false, settings: {}, points: [
+    { x: 0, y: 0, z: 0 }, { x: 1400, y: 0, z: 0, R: 1500, Ls: 300 }, { x: 2400, y: 1000, z: 25 } ] };
+}
+function normalize(d) {
+  d.version = 1; d.closed = !!d.closed; d.settings = d.settings || {}; d.points = (d.points || []).map((p) => ({ x: +p.x || 0, y: +p.y || 0, z: +p.z || 0, R: p.R == null ? undefined : +p.R, Ls: p.Ls == null ? undefined : +p.Ls }));
+  return d;
+}
+function loadAutosave() { try { const t = localStorage.getItem(STORE_KEY); return t ? normalize(JSON.parse(t)) : null; } catch { return null; } }
+function autosave() { try { localStorage.setItem(STORE_KEY, JSON.stringify(design)); } catch { /* storage unavailable */ } }
+
+let design = loadAutosave() || normalize(demoDesign());
+const S = () => ({ ...Core.DEFAULT_SETTINGS, ...design.settings });
+let al, prof, issues = [], gen = null, selected = -1, mode = 'select', selPiece = -1;
+const undoStack = [], redoStack = [];
+function snapshot() { undoStack.push(JSON.stringify(design)); if (undoStack.length > 300) undoStack.shift(); redoStack.length = 0; }
+function undo() { if (!undoStack.length) return; redoStack.push(JSON.stringify(design)); design = normalize(JSON.parse(undoStack.pop())); afterLoad(); }
+function redo() { if (!redoStack.length) return; undoStack.push(JSON.stringify(design)); design = normalize(JSON.parse(redoStack.pop())); afterLoad(); }
+function afterLoad() { if (selected >= design.points.length) selected = design.points.length - 1; $('cClosed').checked = design.closed; buildSettingsForm(); recompute(); }
+
+// ---------- three.js scene ----------
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1f24);
+const camera = new THREE.PerspectiveCamera(45, 1, 5, 400000);
+camera.up.set(0, 0, 1);
+camera.position.set(-800, -2600, 2200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(1200, 300, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(0.4, -0.7, 1); scene.add(sun);
+
+const groups = {};
+for (const k of ['grid', 'preview', 'handles', 'labels', 'gen', 'detail', 'cursor']) { groups[k] = new THREE.Group(); scene.add(groups[k]); }
+
+(function buildGrid() {
+  const ext = 20000, minor = [], major = [];
+  for (let v = -ext; v <= ext; v += 100) { const arr = v % 1000 === 0 ? major : minor; arr.push(-ext, v, 0, ext, v, 0, v, -ext, 0, v, ext, 0); }
+  const mk = (arr, color, op) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity: op })); };
+  groups.grid.add(mk(minor, 0x3a414c, 0.45), mk(major, 0x56606e, 0.9));
+  const ax = new THREE.BufferGeometry(); ax.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.5, 500, 0, 0.5, 0, 0, 0.5, 0, 500, 0.5], 3));
+  ax.setAttribute('color', new THREE.Float32BufferAttribute([1, .3, .3, 1, .3, .3, .3, 1, .3, .3, 1, .3], 3));
+  groups.grid.add(new THREE.LineSegments(ax, new THREE.LineBasicMaterial({ vertexColors: true })));
+})();
+
+function clearGroup(g) {
+  for (const c of [...g.children]) {
+    g.remove(c);
+    c.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map && !m.map.userData.cached) m.map.dispose(); m.dispose(); }); });
+  }
+}
+
+const texCache = new Map();
+function labelSprite(text, color = '#e6e9ee', bg = 'rgba(20,23,27,0.8)', px = 15) {
+  const key = text + color + bg + px;
+  let tex = texCache.get(key);
+  if (!tex) {
+    const c = document.createElement('canvas'), ctx = c.getContext('2d'), fs = 32;
+    ctx.font = `600 ${fs}px system-ui,sans-serif`;
+    const w = Math.ceil(ctx.measureText(text).width) + 20; c.width = w; c.height = fs + 16;
+    ctx.font = `600 ${fs}px system-ui,sans-serif`; ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(0, 0, w, c.height, 10); ctx.fill();
+    ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.fillText(text, 10, c.height / 2 + 1);
+    tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.userData.cached = true; tex.userData.aspect = w / c.height;
+    texCache.set(key, tex);
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sp.renderOrder = 10; sp.userData.screenH = px; sp.userData.aspect = tex.userData.aspect;
+  return sp;
+}
+
+const COL = { straight: new THREE.Color(0x8f9c8a), curve: new THREE.Color(0x4fa3d9), warn: new THREE.Color(0xf2b84b), err: new THREE.Color(0xff6b6b) };
+function curvColor(k) {
+  const st = S(), R = 1 / Math.max(Math.abs(k), 1e-12);
+  if (R < st.minRadius - 1e-6) return COL.err;
+  if (R < st.warnRadius - 1e-6) return COL.warn;
+  return Math.abs(k) > 1e-9 ? COL.curve : COL.straight;
+}
+
+const handleGeo = new THREE.SphereGeometry(1, 20, 14);
+function rebuildPreview() {
+  clearGroup(groups.preview); clearGroup(groups.handles); clearGroup(groups.labels);
+  const G = Core.G, st = S();
+  const showDetail = $('cDetail').checked && gen && !gen.error;
+  if (al.elements.length && !showDetail) {
+    const n = Math.max(2, Math.ceil(al.total / 12));
+    const pos = new Float32Array((n + 1) * 6), col = new Float32Array((n + 1) * 6), idx = [];
+    const r1 = [], r2 = [];
+    for (let i = 0; i <= n; i++) {
+      const s = al.total * i / n, p = Core.poseAt(al, s), z = Core.elevAt(prof, s).z + G.tieH, hw = G.tieHalfLen;
+      pos.set([p.x + p.nx * hw, p.y + p.ny * hw, z, p.x - p.nx * hw, p.y - p.ny * hw, z], i * 6);
+      const c = curvColor(p.k); col.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
+      if (i < n) idx.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2);
+      const rc = G.railCenter + Core.widening(p.k, st) / 2, zr = z + (G.railTop - G.tieH);
+      r1.push(p.x + p.nx * rc, p.y + p.ny * rc, zr); r2.push(p.x - p.nx * rc, p.y - p.ny * rc, zr);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+    groups.preview.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 })));
+    for (const r of [r1, r2]) { const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(r, 3)); groups.preview.add(new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xd8dde4 }))); }
+  }
+  // tangent lines between the design points
+  const pts = design.points;
+  if (pts.length >= 2) {
+    const ok = [], bad = []; const m = design.closed && pts.length >= 3 ? pts.length : pts.length - 1;
+    for (let i = 0; i < m; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length], sg = al.segs[i];
+      (sg && sg.avail < -0.05 ? bad : ok).push(a.x, a.y, a.z + 1, b.x, b.y, b.z + 1);
+    }
+    for (const [arr, color] of [[ok, 0x8a94a3], [bad, 0xff4d4d]]) {
+      if (!arr.length) continue;
+      const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      const ls = new THREE.LineSegments(lg, new THREE.LineDashedMaterial({ color, dashSize: 30, gapSize: 20 }));
+      ls.computeLineDistances(); groups.preview.add(ls);
+    }
+  }
+  // drop lines to show height
+  const drops = [];
+  pts.forEach((p) => { if (p.z > 0.5) drops.push(p.x, p.y, 0, p.x, p.y, p.z); });
+  if (drops.length) { const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.Float32BufferAttribute(drops, 3)); groups.preview.add(new THREE.LineSegments(dg, new THREE.LineBasicMaterial({ color: 0x6b7480 }))); }
+  // handles + labels
+  pts.forEach((p, i) => {
+    const c = al.curves[i];
+    let color = 0xbfc7d2;
+    if (c && c.has) color = c.R < st.minRadius - 1e-6 ? 0xff6b6b : c.R < st.warnRadius - 1e-6 ? 0xf2b84b : 0x4fa3d9;
+    if (i === selected) color = 0xffe066;
+    const h = new THREE.Mesh(handleGeo, new THREE.MeshStandardMaterial({ color, emissive: i === selected ? 0x554400 : 0x000000 }));
+    h.position.set(p.x, p.y, p.z + 4); h.userData.index = i; h.userData.screenR = i === selected ? 9 : 7;
+    groups.handles.add(h);
+    let text = String(i + 1);
+    if (c && c.has) text += `  R${fmt(c.R)}`;
+    if (p.z) text += `  h${fmt(p.z, 1)}`;
+    const sp = labelSprite(text, i === selected ? '#ffe066' : '#e6e9ee');
+    sp.position.set(p.x, p.y, p.z + 4); sp.userData.offsetPx = 18; groups.labels.add(sp);
+  });
+}
+
+function rebuildGenOverlay() {
+  clearGroup(groups.gen); clearGroup(groups.detail);
+  if (!gen || gen.error) return;
+  const G = Core.G, st = gen.S;
+  const jl = [];
+  for (const pc of gen.pieces) {
+    const p = Core.poseAt(al, pc.a), z = Core.elevAt(prof, pc.a).z + G.railTop + 1, w = G.tieHalfLen + 12;
+    jl.push(p.x + p.nx * w, p.y + p.ny * w, z, p.x - p.nx * w, p.y - p.ny * w, z);
+    const m = Core.poseAt(al, (pc.a + pc.b) / 2), zm = Core.elevAt(prof, (pc.a + pc.b) / 2).z + G.railTop;
+    const sp = labelSprite(pc.id, pc.idx === selPiece ? '#ffe066' : (pc.fit.fits ? '#ffd2d2' : '#ff6b6b'), 'rgba(80,20,20,0.75)', 12);
+    sp.position.set(m.x - m.nx * (G.tieHalfLen + 40), m.y - m.ny * (G.tieHalfLen + 40), zm); groups.gen.add(sp);
+  }
+  if (!al.closed) { const p = Core.poseAt(al, al.total), z = Core.elevAt(prof, al.total).z + G.railTop + 1, w = G.tieHalfLen + 12; jl.push(p.x + p.nx * w, p.y + p.ny * w, z, p.x - p.nx * w, p.y - p.ny * w, z); }
+  const jg = new THREE.BufferGeometry(); jg.setAttribute('position', new THREE.Float32BufferAttribute(jl, 3));
+  groups.gen.add(new THREE.LineSegments(jg, new THREE.LineBasicMaterial({ color: 0xff5050 })));
+  if (gen.risers.length) {
+    const arr = []; for (const r of gen.risers) arr.push(...Core.riserShell(gen, r, 'view'));
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals();
+    groups.gen.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x3d7fd6, transparent: true, opacity: 0.55, roughness: 0.8 })));
+  }
+  if (selPiece >= 0 && gen.pieces[selPiece]) {
+    const sh = Core.buildPieceShells(gen, gen.pieces[selPiece], 'view');
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(sh.tie.concat(sh.rail), 3)); g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0x332200, roughness: 0.6 }));
+    mesh.position.z = 0.3; groups.gen.add(mesh);
+  }
+  if ($('cDetail').checked) {
+    const tie = [], rail = [];
+    for (const pc of gen.pieces) { const sh = Core.buildPieceShells(gen, pc, 'view'); for (const v of sh.tie) tie.push(v); for (const v of sh.rail) rail.push(v); }
+    const mk = (arr, color, rough, metal) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal })); };
+    groups.detail.add(mk(tie, 0x8a6a4a, 0.95, 0), mk(rail, 0x9aa3ad, 0.45, 0.5));
+  }
+}
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h); camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix();
+  drawProfile();
+}
+new ResizeObserver(resize).observe(view);
+
+const tmpV = new THREE.Vector3();
+function updateScreenScale() {
+  const h = view.clientHeight || 1, f = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / h;
+  for (const o of groups.handles.children) { const d = camera.position.distanceTo(o.position); o.scale.setScalar(Math.max(2, d * f * o.userData.screenR)); }
+  for (const g of [groups.labels, groups.gen]) for (const o of g.children) {
+    if (!o.isSprite) continue;
+    const d = camera.position.distanceTo(o.position), wpp = d * f;
+    o.scale.set(o.userData.screenH * o.userData.aspect * wpp, o.userData.screenH * wpp, 1);
+    if (o.userData.offsetPx) o.center.set(-o.userData.offsetPx / (o.userData.screenH * o.userData.aspect) * 0.5, -0.4);
+  }
+}
+renderer.setAnimationLoop(() => { controls.update(); updateScreenScale(); renderer.render(scene, camera); });
+
+// ---------- pointer interaction ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let drag = null, down = null;
+function setRay(e) { const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera); }
+function groundAt(z) { const pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -z); const out = new THREE.Vector3(); return ray.ray.intersectPlane(pl, out) ? out : null; }
+const snapV = (v) => { const g = +S().snap || 0; return g > 0 ? Math.round(v / g) * g : Math.round(v * 10) / 10; };
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  setRay(e);
+  const hit = ray.intersectObjects(groups.handles.children, false)[0];
+  down = { x: e.clientX, y: e.clientY };
+  if (hit && mode === 'select') {
+    selected = hit.object.userData.index; snapshot();
+    drag = { i: selected, z: design.points[selected].z, moved: false };
+    controls.enabled = false; renderer.domElement.setPointerCapture(e.pointerId);
+    refreshSelection();
+  }
+});
+let rafPending = false;
+renderer.domElement.addEventListener('pointermove', (e) => {
+  setRay(e);
+  if (drag) {
+    const g = groundAt(drag.z); if (!g) return;
+    const p = design.points[drag.i]; const nx = snapV(g.x), ny = snapV(g.y);
+    if (nx !== p.x || ny !== p.y) { p.x = nx; p.y = ny; drag.moved = true; if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; recompute(); }); } }
+    return;
+  }
+  updateCursor(e);
+});
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (drag) { controls.enabled = true; if (!drag.moved) undoStack.pop(); drag = null; return; }
+  if (!down) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5; down = null;
+  if (moved) return;
+  setRay(e);
+  if (mode === 'add') {
+    const last = design.points[design.points.length - 1], z = last ? last.z : 0;
+    const g = groundAt(z); if (!g) return;
+    snapshot();
+    design.points.push({ x: snapV(g.x), y: snapV(g.y), z, R: S().defaultRadius, Ls: S().defaultEasement });
+    selected = design.points.length - 1; recompute();
+  } else {
+    const hit = ray.intersectObjects(groups.handles.children, false)[0];
+    if (!hit) { selected = -1; refreshSelection(); }
+  }
+});
+renderer.domElement.addEventListener('pointerleave', () => clearGroup(groups.cursor));
+
+function updateCursor(e) {
+  clearGroup(groups.cursor);
+  const hud = $('hud');
+  const last = design.points[design.points.length - 1];
+  const g = groundAt(mode === 'add' && last ? last.z : 0);
+  if (!g) return;
+  const x = snapV(g.x), y = snapV(g.y);
+  let txt = `x ${fmt(x)}  y ${fmt(y)} mm`;
+  if (mode === 'add') {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(10, 16, 24), new THREE.MeshBasicMaterial({ color: 0xffe066, side: THREE.DoubleSide }));
+    ring.position.set(x, y, (last ? last.z : 0) + 1); groups.cursor.add(ring);
+    if (last) {
+      const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute([last.x, last.y, last.z + 1, x, y, last.z + 1], 3));
+      const l = new THREE.Line(lg, new THREE.LineDashedMaterial({ color: 0xffe066, dashSize: 20, gapSize: 15 })); l.computeLineDistances(); groups.cursor.add(l);
+      txt += `  ·  ${fmt(Math.hypot(x - last.x, y - last.y))} mm from point ${design.points.length}`;
+    }
+  }
+  hud.textContent = txt;
+}
+
+function setMode(m) {
+  mode = m;
+  $('mSelect').classList.toggle('on', m === 'select'); $('mAdd').classList.toggle('on', m === 'add');
+  const st = S(), t45 = Math.round(st.defaultRadius * Math.tan(Math.PI / 8) + st.defaultEasement / 2), t90 = Math.round(st.defaultRadius + st.defaultEasement / 2);
+  $('modeHint').innerHTML = m === 'add'
+    ? `Click the ground to add a point at the end of the line. Right-drag pans, scroll zooms.<br>Curves need room: at R${st.defaultRadius} a 45° turn uses about ${t45} mm of each straight, and a 90° turn about ${t90} mm. Red dashed lines mean two curves overlap.`
+    : 'Drag a point to move it. Drag empty space to orbit, right-drag to pan, scroll to zoom. Press <b>Delete</b> to remove the selected point.';
+  clearGroup(groups.cursor);
+}
+
+function fitView() {
+  const pts = design.points; if (!pts.length) return;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z1 = 0;
+  for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); z1 = Math.max(z1, p.z); }
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, size = Math.max(x1 - x0, y1 - y0, 600);
+  controls.target.set(cx, cy, z1 / 2);
+  camera.position.set(cx - size * 0.15, cy - size * 0.95, size * 0.95 + z1);
+}
+function topView() { const t = controls.target, d = camera.position.distanceTo(t); camera.position.set(t.x, t.y - d * 0.002, t.z + d); }
+function focusAt(at) { if (!at) return; const off = camera.position.clone().sub(controls.target).setLength(900); controls.target.set(at.x, at.y, at.z || 0); camera.position.copy(controls.target).add(off); }
+
+// ---------- profile strip ----------
+const pcv = $('profile');
+let profMap = null, pdrag = null;
+function drawProfile() {
+  const r = pcv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio, 2);
+  if (!r.width) return;
+  pcv.width = r.width * dpr; pcv.height = r.height * dpr;
+  const ctx = pcv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = r.width, H = r.height; ctx.clearRect(0, 0, W, H);
+  if (!al || !(al.total > 0)) { profMap = null; return; }
+  const st = S(), padL = 52, padR = 16, padT = 26, padB = 22;
+  let z0 = Infinity, z1 = -Infinity;
+  const n = 600, samples = [];
+  for (let i = 0; i <= n; i++) { const s = al.total * i / n, e = Core.elevAt(prof, s); samples.push([s, e.z, e.g]); z0 = Math.min(z0, e.z); z1 = Math.max(z1, e.z); }
+  for (const p of design.points) { z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+  const span = Math.max(20, z1 - z0); z0 -= span * 0.15; z1 += span * 0.25;
+  const X = (s) => padL + (W - padL - padR) * s / al.total, Y = (z) => padT + (H - padT - padB) * (1 - (z - z0) / (z1 - z0));
+  profMap = { X, Y, z0, z1, padT, padB, H, invY: (py) => z0 + (1 - (py - padT) / (H - padT - padB)) * (z1 - z0) };
+  ctx.font = '11px system-ui,sans-serif'; ctx.fillStyle = '#9aa3b0'; ctx.strokeStyle = '#2a3038'; ctx.lineWidth = 1;
+  const niceStep = (range, target) => { const raw = range / target, p = 10 ** Math.floor(Math.log10(raw)); return [1, 2, 5, 10].map((m) => m * p).find((v) => v >= raw); };
+  const zs = niceStep(z1 - z0, 4);
+  for (let z = Math.ceil(z0 / zs) * zs; z <= z1; z += zs) { ctx.beginPath(); ctx.moveTo(padL, Y(z)); ctx.lineTo(W - padR, Y(z)); ctx.stroke(); ctx.fillText(fmt(z, zs < 1 ? 1 : 0), 8, Y(z) + 4); }
+  const ss = niceStep(al.total, 8);
+  for (let s = 0; s <= al.total; s += ss) { ctx.beginPath(); ctx.moveTo(X(s), padT); ctx.lineTo(X(s), H - padB); ctx.stroke(); ctx.fillText(s >= 1000 ? (s / 1000).toFixed(ss < 1000 ? 1 : 0) + ' m' : s + '', X(s) + 3, H - 6); }
+  // baseboard line
+  ctx.strokeStyle = '#6b5b45'; ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(W - padR, Y(0)); ctx.stroke();
+  // pieces
+  if (gen && !gen.error) { ctx.strokeStyle = 'rgba(255,80,80,0.35)'; for (const pc of gen.pieces) { ctx.beginPath(); ctx.moveTo(X(pc.a), padT); ctx.lineTo(X(pc.a), H - padB); ctx.stroke(); } }
+  // elevation line coloured by grade
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < n; i++) {
+    const g = Math.abs(samples[i][2]) * 100;
+    ctx.strokeStyle = g > st.maxGrade + 1e-9 ? '#ff6b6b' : g > st.warnGrade + 1e-9 ? '#f2b84b' : '#5ccf8a';
+    ctx.beginPath(); ctx.moveTo(X(samples[i][0]), Y(samples[i][1])); ctx.lineTo(X(samples[i + 1][0]), Y(samples[i + 1][1])); ctx.stroke();
+  }
+  ctx.lineWidth = 1;
+  for (const sg of prof.segs) {
+    if (sg.ds < 1) continue;
+    const sm = Math.min((sg.s0 + sg.s1) / 2, al.total), pct = sg.g * 100;
+    const txt = Math.abs(pct) < 0.005 ? 'level' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%  1:${Math.round(100 / Math.abs(pct))}`;
+    ctx.fillStyle = '#c9d1db'; ctx.fillText(txt, X(sm) - ctx.measureText(txt).width / 2, Y(Core.elevAt(prof, sm).z) - 9);
+  }
+  profMap.stations = al.stations.map((stn) => ({ i: stn.i, x: X(stn.s), y: Y(stn.z) }));
+  for (const p of profMap.stations) {
+    ctx.fillStyle = p.i === selected ? '#ffe066' : '#e6e9ee';
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.i === selected ? 6 : 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9aa3b0'; ctx.fillText(String(p.i + 1), p.x + 7, p.y + 14);
+  }
+}
+pcv.addEventListener('pointerdown', (e) => {
+  if (!profMap || !profMap.stations) return;
+  const r = pcv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  let best = null, bd = 12;
+  for (const p of profMap.stations) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } }
+  if (!best) return;
+  selected = best.i; snapshot(); pdrag = { i: best.i, moved: false }; pcv.setPointerCapture(e.pointerId); refreshSelection();
+});
+pcv.addEventListener('pointermove', (e) => {
+  if (!pdrag || !profMap) return;
+  const r = pcv.getBoundingClientRect(), z = Math.max(0, Math.round(profMap.invY(e.clientY - r.top) * 2) / 2);
+  const p = design.points[pdrag.i]; if (p.z !== z) { p.z = z; pdrag.moved = true; recompute(); }
+});
+pcv.addEventListener('pointerup', () => { if (pdrag) { if (!pdrag.moved) undoStack.pop(); pdrag = null; } });
+
+// ---------- side panels ----------
+function renderSel() {
+  const el = $('selBody'), n = design.points.length;
+  if (selected < 0 || selected >= n) { el.innerHTML = `<p class="muted" style="margin:0">No point selected. ${n ? 'Click a point to edit it.' : 'Choose <b>Add points</b> and click the ground to start.'}</p>`; return; }
+  const p = design.points[selected], c = al.curves[selected] || {}, interior = c.interior, st = S();
+  const tag = interior ? (c.has ? 'curve' : 'straight through') : (selected === 0 ? 'start of line' : 'end of line');
+  let info = '';
+  if (c.has) {
+    const gauge = Core.G.nominalGauge + Core.widening(1 / c.R, st);
+    info = `<div class="kv"><span>Turn</span><span>${fmt(Math.abs(c.delta) * 180 / Math.PI, 1)}° ${c.delta > 0 ? 'left' : 'right'}</span>
+      <span>Arc length</span><span>${fmt(c.Lc)} mm</span><span>Easements</span><span>2 × ${fmt(c.Ls)} mm</span>
+      <span>Tangent length</span><span>${fmt(c.T)} mm</span><span>Gauge on curve</span><span>${gauge.toFixed(2)} mm</span></div>`;
+  }
+  el.innerHTML = `<div style="margin-bottom:6px"><b>Point ${selected + 1}</b> <span class="muted">· ${tag}</span></div>
+   <div class="grid2">
+    <label for="fX">X (mm)</label><input id="fX" type="number" step="10" value="${fmt(p.x, 1)}">
+    <label for="fY">Y (mm)</label><input id="fY" type="number" step="10" value="${fmt(p.y, 1)}">
+    <label for="fZ">Height (mm)</label><input id="fZ" type="number" step="1" min="0" value="${fmt(p.z, 1)}">
+    <label for="fR">Curve radius (mm)</label><input id="fR" type="number" step="50" min="100" value="${fmt(p.R ?? st.defaultRadius)}" ${interior ? '' : 'disabled'}>
+    <label for="fL">Easement length (mm)</label><input id="fL" type="number" step="25" min="0" value="${fmt(p.Ls ?? st.defaultEasement)}" ${interior ? '' : 'disabled'}>
+   </div>${info}
+   <div class="btns" style="margin-top:10px"><button id="bIns">Insert point after</button><button id="bDel">Delete point</button></div>`;
+  const bind = (id, key) => $(id).addEventListener('change', (e) => { const v = parseFloat(e.target.value); if (!isFinite(v)) return; snapshot(); design.points[selected][key] = key === 'z' ? Math.max(0, v) : v; recompute(); });
+  bind('fX', 'x'); bind('fY', 'y'); bind('fZ', 'z'); bind('fR', 'R'); bind('fL', 'Ls');
+  $('bDel').onclick = deleteSelected;
+  $('bIns').onclick = () => {
+    const pts = design.points, i = selected, a = pts[i];
+    let b = pts[i + 1];
+    if (!b && design.closed) b = pts[0];
+    snapshot();
+    let np;
+    if (b) np = { x: snapV((a.x + b.x) / 2), y: snapV((a.y + b.y) / 2), z: (a.z + b.z) / 2 };
+    else { const pr = pts[i - 1] || { x: a.x - 1, y: a.y }; const d = Math.hypot(a.x - pr.x, a.y - pr.y) || 1; np = { x: snapV(a.x + (a.x - pr.x) / d * 600), y: snapV(a.y + (a.y - pr.y) / d * 600), z: a.z }; }
+    np.R = st.defaultRadius; np.Ls = st.defaultEasement;
+    pts.splice(i + 1, 0, np); selected = i + 1; recompute();
+  };
+}
+function deleteSelected() { if (selected < 0) return; snapshot(); design.points.splice(selected, 1); selected = Math.min(selected, design.points.length - 1); recompute(); }
+
+function renderIssues() {
+  const el = $('issues');
+  const list = issues.slice().sort((a, b) => ({ error: 0, warning: 1, info: 2 }[a.level] - { error: 0, warning: 1, info: 2 }[b.level]));
+  if (!list.length) { el.innerHTML = '<div class="okmsg">✓ Meets all the radius, gradient and clearance checks.</div>'; }
+  else {
+    el.innerHTML = list.map((it, k) => `<div class="issue ${it.level}" data-k="${k}">${it.fatal ? '<b>Blocking:</b> ' : ''}${it.msg}</div>`).join('');
+    el.querySelectorAll('.issue').forEach((d) => d.onclick = () => { const it = list[+d.dataset.k]; if (it.point != null) { selected = it.point; refreshSelection(); } focusAt(it.at || (it.point != null ? design.points[it.point] : null)); });
+  }
+  const st = S();
+  let minR = Infinity, maxG = 0, maxZ = 0, nc = 0;
+  for (const c of al.curves || []) if (c && c.has) { nc++; minR = Math.min(minR, c.R); }
+  for (const sg of prof.segs || []) maxG = Math.max(maxG, Math.abs(sg.g) * 100);
+  for (const p of design.points) maxZ = Math.max(maxZ, p.z);
+  $('stats').innerHTML = `<span>Track length</span><span>${(al.total / 1000 || 0).toFixed(2)} m</span>
+    <span>Curves</span><span>${nc}</span><span>Tightest radius</span><span>${isFinite(minR) ? fmt(minR) + ' mm' : '—'}</span>
+    <span>Steepest gradient</span><span>${maxG.toFixed(2)}%${maxG > 0 ? ' (1:' + Math.round(100 / maxG) + ')' : ''}</span><span>Highest point</span><span>${fmt(maxZ, 1)} mm</span>
+    <span>Limits</span><span>R ≥ ${st.minRadius}, ≤ ${st.maxGrade}%</span>`;
+}
+
+function renderPieces() {
+  const sum = $('pieceSummary'), list = $('pieceList'), bed = $('bed');
+  if (!gen) { sum.textContent = al.fatal ? 'Fix the blocking errors first.' : 'Press Generate pieces to split the track into printable parts.'; list.hidden = true; bed.hidden = true; return; }
+  if (gen.error) { sum.innerHTML = `<span style="color:var(--err)">${gen.error}</span>`; list.hidden = true; bed.hidden = true; return; }
+  const bad = gen.pieces.filter((p) => !p.fit.fits).length;
+  const lens = gen.pieces.map((p) => p.len);
+  sum.innerHTML = `<b>${gen.pieces.length}</b> pieces (${fmt(Math.min(...lens))}–${fmt(Math.max(...lens))} mm) · <b>${gen.risers.length}</b> risers${bad ? ` · <span style="color:var(--err)">${bad} too big for the bed</span>` : ''}`;
+  list.hidden = false;
+  list.innerHTML = gen.pieces.map((p) => `<div class="prow${p.idx === selPiece ? ' sel' : ''}" data-i="${p.idx}"><b>${p.id}</b><span>${fmt(p.len, 1)} mm · ${isFinite(p.minR) ? 'R' + fmt(p.minR) : 'straight'}${p.maxGrade > 0.01 ? ' · ' + p.maxGrade.toFixed(1) + '%' : ''}</span><span class="${p.fit.fits ? 'muted' : 'bad'}">${fmt(p.fit.w)}×${fmt(p.fit.h)}</span></div>`).join('');
+  list.querySelectorAll('.prow').forEach((d) => d.onclick = () => { selPiece = +d.dataset.i; renderPieces(); rebuildGenOverlay(); const pc = gen.pieces[selPiece], m = Core.poseAt(al, (pc.a + pc.b) / 2); focusAt({ x: m.x, y: m.y, z: Core.elevAt(prof, pc.a).z }); });
+  drawBed();
+}
+function drawBed() {
+  const bed = $('bed');
+  if (!gen || gen.error || selPiece < 0 || !gen.pieces[selPiece]) { bed.hidden = true; return; }
+  bed.hidden = false;
+  const st = gen.S, pc = gen.pieces[selPiece], ctx = bed.getContext('2d'), Wc = bed.width, Hc = bed.height;
+  ctx.clearRect(0, 0, Wc, Hc);
+  const sc = (Math.min(Wc, Hc) - 20) / Math.max(st.bedX, st.bedY), ox = Wc / 2, oy = Hc / 2;
+  const c = Math.cos(pc.fit.ang), s = Math.sin(pc.fit.ang);
+  const T = ([x, y]) => [ox + (x * c - y * s - pc.fit.cx) * sc, oy - (x * s + y * c - pc.fit.cy) * sc];
+  ctx.fillStyle = '#1d232b'; ctx.fillRect(ox - st.bedX / 2 * sc, oy - st.bedY / 2 * sc, st.bedX * sc, st.bedY * sc);
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#4a5363'; ctx.strokeRect(ox - (st.bedX / 2 - st.bedMargin) * sc, oy - (st.bedY / 2 - st.bedMargin) * sc, (st.bedX - 2 * st.bedMargin) * sc, (st.bedY - 2 * st.bedMargin) * sc); ctx.setLineDash([]);
+  ctx.fillStyle = '#8a6a4a'; ctx.strokeStyle = '#c9a57f';
+  for (const poly of pc.outl.ties) { ctx.beginPath(); poly.forEach((p, i) => { const q = T(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  ctx.strokeStyle = '#dfe5ec'; ctx.lineWidth = 2;
+  for (const r of pc.outl.rails) { ctx.beginPath(); r.forEach((p, i) => { const q = T(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.stroke(); }
+  ctx.lineWidth = 1; ctx.fillStyle = '#9aa3b0'; ctx.font = '11px system-ui,sans-serif';
+  ctx.fillText(`${pc.id} on ${st.bedX}×${st.bedY} bed · ${fmt(pc.fit.w, 1)}×${fmt(pc.fit.h, 1)} mm`, 8, Hc - 6);
+}
+
+// ---------- settings ----------
+const SCHEMA = [
+  ['Curves (Gauge O Guild)', [['minRadius', 'Minimum radius, blocked below (mm)', 50], ['warnRadius', 'Warn below radius (mm)', 50], ['defaultRadius', 'Radius for new points (mm)', 50], ['defaultEasement', 'Easement for new points (mm)', 25], ['gaugeWidening', 'Widen gauge on curves under R1600 (to 32.4 mm max)', 'bool']]],
+  ['Gradients', [['maxGrade', 'Maximum gradient (%)', 0.1], ['warnGrade', 'Warn above gradient (%)', 0.1], ['vcurveLen', 'Vertical curve length (mm)', 50]]],
+  ['Clearances', [['trackCentres', 'Minimum track centres (mm)', 5], ['overheadClearance', 'Headroom above rail where the track crosses (mm)', 5]]],
+  ['3D printing', [['bedX', 'Bed X (mm)', 1], ['bedY', 'Bed Y (mm)', 1], ['bedZ', 'Bed height (mm)', 1], ['bedMargin', 'Bed margin (mm)', 0.5], ['sleeperPitch', 'Sleeper spacing (mm)', 0.5], ['dovetailClearance', 'Dovetail clearance per side (mm)', 0.05]]],
+  ['Risers (gradient supports)', [['risers', 'Generate risers for raised track', 'bool'], ['riserSpacing', 'Maximum riser spacing (mm)', 10], ['riserMinHeight', 'Skip risers lower than (mm)', 0.5], ['riserDepth', 'Riser depth along track (mm)', 1]]],
+  ['Editor', [['snap', 'Grid snap, 0 = off (mm)', 1]]],
+];
+function buildSettingsForm() {
+  const st = S();
+  $('settings').innerHTML = SCHEMA.map(([title, items]) => `<div style="margin:8px 0 4px;font-weight:600">${title}</div><div class="grid2">` + items.map(([k, lbl, step]) => step === 'bool'
+    ? `<label for="s_${k}" style="grid-column:1/3;display:flex;gap:6px;align-items:center;color:var(--text)"><input type="checkbox" id="s_${k}" ${st[k] ? 'checked' : ''}> ${lbl}</label>`
+    : `<label for="s_${k}">${lbl}</label><input type="number" id="s_${k}" step="${step}" value="${st[k]}">`).join('') + '</div>').join('');
+  for (const [, items] of SCHEMA) for (const [k, , step] of items) {
+    $('s_' + k).addEventListener('change', (e) => {
+      snapshot();
+      if (step === 'bool') design.settings[k] = e.target.checked;
+      else { const v = parseFloat(e.target.value); if (!isFinite(v)) return; design.settings[k] = v; }
+      recompute();
+    });
+  }
+}
+
+// ---------- main update ----------
+// Geometry changed: re-check everything and drop any generated pieces.
+function recompute() {
+  al = Core.computeAlignment(design);
+  prof = Core.buildProfile(al, S());
+  issues = Core.validate(al, prof, S());
+  gen = null; selPiece = -1; clearGroup(groups.gen); clearGroup(groups.detail);
+  rebuildPreview(); drawProfile(); renderSel(); renderIssues(); renderPieces();
+  autosave();
+}
+// Only the selection changed.
+function refreshSelection() { rebuildPreview(); drawProfile(); renderSel(); }
+
+function runGenerate() {
+  $('busy').style.display = 'flex';
+  setTimeout(() => {
+    try { gen = Core.generate(design); issues = gen.issues; selPiece = -1; }
+    catch (err) { console.error(err); gen = { error: 'Generation failed: ' + err.message, pieces: [], risers: [], issues }; }
+    $('busy').style.display = 'none';
+    rebuildPreview(); rebuildGenOverlay(); drawProfile(); renderIssues(); renderPieces();
+  }, 30);
+}
+
+function download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+
+async function exportZip() {
+  if (!gen) { runGenerate(); await new Promise((r) => setTimeout(r, 80)); while ($('busy').style.display === 'flex') await new Promise((r) => setTimeout(r, 50)); }
+  if (!gen || gen.error) { alert(gen ? gen.error : 'Nothing to export.'); return; }
+  const errs = gen.issues.filter((i) => i.level === 'error');
+  if (errs.length && !confirm(`There are ${errs.length} unresolved error(s):\n\n${errs.slice(0, 5).map((e) => '• ' + e.msg).join('\n')}\n\nExport anyway?`)) return;
+  if (typeof JSZip === 'undefined') { alert('The zip library did not load (are you offline?).'); return; }
+  const btn = $('bExport'), old = btn.textContent; btn.disabled = true;
+  try {
+    const zip = new JSZip();
+    for (let i = 0; i < gen.pieces.length; i++) {
+      zip.file(`pieces/${gen.pieces[i].id}.stl`, Core.pieceSTL(gen, i));
+      if (i % 4 === 0) { btn.textContent = `Building ${i + 1}/${gen.pieces.length}…`; await new Promise((r) => setTimeout(r, 0)); }
+    }
+    gen.risers.forEach((r, j) => zip.file(`risers/${r.id}_h${r.hc.toFixed(1)}mm.stl`, Core.riserSTL(gen, j)));
+    zip.file('layout_plan.svg', Core.planSVG(gen, design));
+    zip.file('README.txt', Core.readme(gen));
+    zip.file('design.json', JSON.stringify(design, null, 2));
+    btn.textContent = 'Compressing…';
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    download(blob, `o-gauge-track-${gen.pieces.length}pcs.zip`);
+  } catch (err) { console.error(err); alert('Export failed: ' + err.message); }
+  btn.textContent = old; btn.disabled = false;
+}
+
+// ---------- wiring ----------
+$('mSelect').onclick = () => setMode('select');
+$('mAdd').onclick = () => setMode('add');
+$('bTop').onclick = topView; $('bFit').onclick = fitView;
+$('cClosed').checked = design.closed;
+$('cClosed').onchange = (e) => { snapshot(); design.closed = e.target.checked; recompute(); };
+$('cDetail').onchange = () => { if ($('cDetail').checked && !gen) runGenerate(); else { rebuildPreview(); rebuildGenOverlay(); } };
+$('bGen').onclick = runGenerate;
+$('bExport').onclick = exportZip;
+$('bUndo').onclick = undo; $('bRedo').onclick = redo;
+$('bNew').onclick = () => { if (!confirm('Start a new, empty layout? (Your current layout stays in undo.)')) return; snapshot(); design = normalize({ settings: design.settings, points: [] }); selected = -1; $('cClosed').checked = false; setMode('add'); recompute(); };
+$('bSave').onclick = () => download(new Blob([JSON.stringify(design, null, 2)], { type: 'application/json' }), 'track-layout.json');
+$('bOpen').onclick = () => $('fileIn').click();
+$('fileIn').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; try { const d = normalize(JSON.parse(await f.text())); snapshot(); design = d; selected = -1; afterLoad(); fitView(); } catch (err) { alert('Could not read that file: ' + err.message); } e.target.value = ''; };
+$('bResetSettings').onclick = () => { snapshot(); design.settings = {}; buildSettingsForm(); recompute(); };
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+  else if (e.key === 'a' || e.key === 'A') setMode('add');
+  else if (e.key === 's' || e.key === 'S' || e.key === 'Escape') setMode('select');
+});
+
+buildSettingsForm();
+setMode('select');
+recompute();
+resize();
+fitView();
+</script>
+</body>
+</html>
